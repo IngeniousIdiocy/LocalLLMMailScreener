@@ -1,0 +1,20 @@
+{
+  "name": "localllmmailscreener",
+  "version": "1.0.0",
+  "description": "Gmail -> local LLM -> Twilio SMS screener with dashboard",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.8",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "googleapis": "^131.0.0",
+    "html-to-text": "^9.0.5",
+    "mailparser": "^3.9.0",
+    "twilio": "^4.23.0"
+  }
+}

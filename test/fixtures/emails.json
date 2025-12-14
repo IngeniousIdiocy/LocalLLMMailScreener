@@ -1,0 +1,42 @@
+[
+  {
+    "id": "m1",
+    "from": "Alice <alice@example.com>",
+    "to": "Ops <ops@example.com>",
+    "subject": "Urgent: production down",
+    "body": "The east cluster is offline and customers are 500ing. Need immediate triage.",
+    "date": "Fri, 01 Mar 2024 09:00:00 -0000"
+  },
+  {
+    "id": "m2",
+    "from": "Carol <carol@example.com>",
+    "to": "Ops <ops@example.com>",
+    "subject": "Weekly status",
+    "body": "Here is the weekly status update with no actions required.",
+    "date": "Fri, 01 Mar 2024 11:00:00 -0000"
+  },
+  {
+    "id": "bad1",
+    "from": "Dreamer <dream@example.com>",
+    "to": "Ops <ops@example.com>",
+    "subject": "A surreal request",
+    "body": "Please interpret this as invalid JSON output test.",
+    "date": "Fri, 01 Mar 2024 12:00:00 -0000"
+  },
+  {
+    "id": "twiliofail1",
+    "from": "Ops Bot <bot@example.com>",
+    "to": "Ops <ops@example.com>",
+    "subject": "Notify me",
+    "body": "Twilio should fail to send this notification.",
+    "date": "Fri, 01 Mar 2024 13:00:00 -0000"
+  },
+  {
+    "id": "slow1",
+    "from": "Laggy <lag@example.com>",
+    "to": "Ops <ops@example.com>",
+    "subject": "Slow model",
+    "body": "This one should simulate a slow LLM response.",
+    "date": "Fri, 01 Mar 2024 14:00:00 -0000"
+  }
+]

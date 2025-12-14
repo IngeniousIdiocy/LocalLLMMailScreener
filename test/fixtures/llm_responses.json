@@ -1,0 +1,15 @@
+{
+  "positive": {
+    "m1": { "notify": true, "title": "Prod issue", "body": "Fix ASAP", "urgency": "high", "tokens": 60 },
+    "m2": { "notify": false, "title": "FYI", "body": "No action", "urgency": "low", "tokens": 10 }
+  },
+  "invalid": {
+    "bad1": { "responseType": "invalid" }
+  },
+  "twilioFail": {
+    "twiliofail1": { "notify": true, "title": "Alert", "body": "Notify", "urgency": "high", "tokens": 15 }
+  },
+  "slow": {
+    "slow1": { "responseType": "slow", "delayMs": 500 }
+  }
+}

@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Local LLM Mail Screener</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #38bdf8;
+      --danger: #ef4444;
+      --success: #22c55e;
+      --warn: #f59e0b;
+      --card: #1f2937;
+      --border: #1f2937;
+      --font: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at 20% 20%, rgba(56, 189, 248, 0.15), transparent 40%), var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      padding: 20px;
+    }
+    h1 { margin: 0 0 12px; letter-spacing: -0.02em; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .ok { background: rgba(34, 197, 94, 0.12); color: var(--success); }
+    .fail { background: rgba(239, 68, 68, 0.12); color: var(--danger); }
+    .warn { background: rgba(245, 158, 11, 0.12); color: var(--warn); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      text-align: left;
+      padding: 8px 6px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th { color: var(--muted); font-weight: 600; }
+    tr:hover { background: rgba(255,255,255,0.02); }
+    .muted { color: var(--muted); font-size: 12px; }
+    .pill { padding: 2px 8px; border-radius: 999px; font-weight: 600; font-size: 11px; }
+    .pill.high { background: rgba(239,68,68,0.12); color: var(--danger); }
+    .pill.normal { background: rgba(56,189,248,0.12); color: var(--accent); }
+    .pill.low { background: rgba(148,163,184,0.2); color: var(--muted); }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+    .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
+    .stat .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .stat .value { font-size: 22px; font-weight: 700; margin-top: 6px; }
+    @media (max-width: 640px) {
+      body { padding: 14px; }
+      table { font-size: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Local LLM Mail Screener</h1>
+  <div class="grid" id="health-cards"></div>
+  <div class="card">
+    <div class="section-title">
+      <span>Token & Activity</span>
+      <span class="muted" id="config"></span>
+    </div>
+    <div class="stats-grid" id="stats-grid"></div>
+  </div>
+  <div class="card">
+    <div class="section-title">
+      <span>Recent SMS Sends</span>
+      <span class="muted">Latest first (max 50)</span>
+    </div>
+    <div style="overflow-x:auto;">
+      <table id="sends-table">
+        <thead>
+          <tr>
+            <th>Sent At</th><th>From</th><th>Subject</th><th>Urgency</th><th>Tokens</th><th>Twilio SID</th><th>Preview</th><th>Gmail</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+  <script>
+    const healthCards = document.getElementById('health-cards');
+    const statsGrid = document.getElementById('stats-grid');
+    const sendsBody = document.querySelector('#sends-table tbody');
+    const configEl = document.getElementById('config');
+
+    const fmtTime = (ts) => ts ? new Date(ts).toLocaleString() : '—';
+    const statusBadge = (ok) => {
+      const cls = ok ? 'ok' : 'fail';
+      const label = ok ? 'OK' : 'FAIL';
+      return `<span class="status ${cls}">${label}</span>`;
+    };
+
+    const urgencyPill = (u) => `<span class="pill ${u || 'normal'}">${u || 'normal'}</span>`;
+
+    const renderHealth = (health) => {
+      const items = [
+        { key: 'gmail', label: 'Gmail' },
+        { key: 'llm', label: 'LLM' },
+        { key: 'twilio', label: 'Twilio' }
+      ];
+      healthCards.innerHTML = items.map(item => {
+        const h = health[item.key] || {};
+        const ok = !!h.ok;
+        const detail = h.last_error ? `<div class="muted">Last error: ${h.last_error}</div>` : '';
+        const extra = item.key === 'llm' ? `<div class="muted">Avg latency: ${h.avg_latency_ms || 0} ms</div>` : '';
+        return `<div class="card">
+          <div class="section-title">
+            <span>${item.label}</span>
+            ${statusBadge(ok)}
+          </div>
+          <div class="muted">Last success: ${fmtTime(h.last_success_at)}</div>
+          ${extra}
+          ${detail}
+        </div>`;
+      }).join('');
+    };
+
+    const renderStats = (stats) => {
+      const items = [
+        { label: 'Total Tokens (est)', value: stats.tokens_total_est || 0 },
+        { label: 'Tokens Last 24h (est)', value: stats.last_24h_tokens_est || 0 },
+        { label: 'Emails Processed', value: stats.emails_processed || 0 },
+        { label: 'Notifications Sent', value: stats.notifications_sent || 0 },
+        { label: 'LLM Requests', value: stats.llm_requests || 0 }
+      ];
+      statsGrid.innerHTML = items.map(i => `<div class="stat"><div class="label">${i.label}</div><div class="value">${i.value}</div></div>`).join('');
+    };
+
+    const renderSends = (sends) => {
+      sendsBody.innerHTML = sends.map(s => `<tr>
+        <td>${fmtTime(s.sent_at)}</td>
+        <td>${s.from || ''}</td>
+        <td>${s.subject || ''}</td>
+        <td>${urgencyPill(s.urgency)}</td>
+        <td>${s.tokens_for_email || 0}</td>
+        <td>${s.twilio_sid || ''}</td>
+        <td>${(s.sms_preview || '').replace(/</g, '&lt;')}</td>
+        <td>${s.gmail_link ? `<a href="${s.gmail_link}" target="_blank">Open</a>` : ''}</td>
+      </tr>`).join('');
+    };
+
+    const renderConfig = (cfg) => {
+      configEl.textContent = `Polling ${cfg.poll_interval_ms}ms | Concurrency ${cfg.max_concurrency} | Dry run ${cfg.dry_run}`;
+    };
+
+    const refresh = async () => {
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        renderHealth(data.health || {});
+        renderStats(data.stats || {});
+        renderSends(data.recent_sends || []);
+        if (data.config_sanitized) renderConfig(data.config_sanitized);
+      } catch (e) {
+        console.error('Status fetch failed', e);
+      }
+    };
+
+    refresh();
+    setInterval(refresh, 2000);
+  </script>
+</body>
+</html>

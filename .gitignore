@@ -1,0 +1,4 @@
+node_modules
+npm-cache
+data/state*.json
+.env
