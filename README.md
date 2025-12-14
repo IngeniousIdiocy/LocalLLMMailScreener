@@ -1,6 +1,6 @@
 ## Local LLM Mail Screener
 
-Node.js (ESM) service that polls Gmail, sends each new email to a local OpenAI-compatible LLM, and optionally forwards summarized notifications via Twilio SMS. Includes a lightweight dashboard and JSON status API.
+Node.js (ESM) service that polls Gmail, sends each new email to a local OpenAI-compatible LLM, and optionally forwards summarized notifications based on the LLMs assessment of importance via Twilio SMS. Includes a lightweight dashboard and JSON status API.
 
 ---
 
