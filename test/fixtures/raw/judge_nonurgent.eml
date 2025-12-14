@@ -1,0 +1,19 @@
+From: Coffee Club <newsletter@beans.example.com>
+To: Mark <mark@example.com>
+Subject: Weekend brew tips and discounts
+Date: Fri, 01 Mar 2024 09:15:00 -0000
+Message-ID: <judge_nonurgent@example.com>
+Content-Type: multipart/alternative; boundary="abc123"
+
+--abc123
+Content-Type: text/plain; charset="UTF-8"
+
+Hi Mark,
+
+Here are slow brew recipes and a 5% coupon for next week. No action needed—just enjoy.
+
+--abc123
+Content-Type: text/html; charset="UTF-8"
+
+<html><body><p>Hi Mark,</p><p>Here are slow brew recipes and a 5% coupon for next week. No action needed&mdash;just enjoy.</p></body></html>
+--abc123--

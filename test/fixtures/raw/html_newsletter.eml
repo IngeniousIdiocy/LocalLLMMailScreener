@@ -1,0 +1,13 @@
+From: Design Digest <hello@design.example.com>
+To: Mark <mark@example.com>
+Subject: Monthly highlights (HTML only)
+Date: Fri, 01 Mar 2024 10:00:00 -0000
+Message-ID: <html_newsletter@example.com>
+Content-Type: text/html; charset="UTF-8"
+
+<html>
+  <body>
+    <h1>Welcome back!</h1>
+    <p>This issue is HTML-only with no plain text part.</p>
+  </body>
+</html>

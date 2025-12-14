@@ -11,7 +11,8 @@ const readJsonFixture = (filename) => {
 
 export const fixtures = {
   emails: readJsonFixture('emails.json'),
-  llm: readJsonFixture('llm_responses.json')
+  llm: readJsonFixture('llm_responses.json'),
+  llmJudgment: readJsonFixture('llm_judgment_cases.json')
 };
 
 export const base64UrlEncode = (input) =>
@@ -42,6 +43,24 @@ export const buildEmails = (ids) => {
       })
     )
   }));
+};
+
+export const buildEmailsFromRawFiles = (entries) =>
+  entries.map((entry) => {
+    const fullPath = path.join(__dirname, 'fixtures', entry.raw_file);
+    const raw = fs.readFileSync(fullPath, 'utf8');
+    return {
+      id: entry.id,
+      threadId: entry.threadId || `t-${entry.id}`,
+      raw: base64UrlEncode(raw)
+    };
+  });
+
+export const subjectFromRaw = (rawFile) => {
+  const fullPath = path.join(__dirname, 'fixtures', rawFile);
+  const raw = fs.readFileSync(fullPath, 'utf8');
+  const match = /^Subject:\s*(.+)$/im.exec(raw);
+  return match ? match[1].trim() : rawFile;
 };
 
 export const createMockGmail = (emails) => ({

@@ -4,11 +4,13 @@ process.env.NODE_ENV = 'test';
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { startApp } from '../src/index.js';
+import { callLLM } from '../src/llm.js';
 import { createMockGmail, buildEmails, createTwilioMock, tmpStatePath, cleanupFile } from './helpers.js';
 
 const useRealLLM = process.env.TEST_REAL_LLM === '1';
 const useRealGmail = process.env.TEST_REAL_GMAIL === '1';
 const useRealTwilio = process.env.TEST_REAL_TWILIO === '1';
+const logLLM = process.env.TEST_LLM_DEBUG === '1';
 
 const hasGmailCreds =
   process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET && process.env.GMAIL_REFRESH_TOKEN;
@@ -32,13 +34,31 @@ test(
       configOverrides: {
         port: 0,
         statePath,
-        pollIntervalMs: 2000,
-        pollMaxResults: 5,
-        dryRun: true
-      },
-      gmailClient: mockGmail,
-      twilioClient: twilioMock,
-      // Use real LLM by not overriding llmCaller / llmHealthChecker
+      pollIntervalMs: 2000,
+      pollMaxResults: 5,
+      dryRun: true
+    },
+    gmailClient: mockGmail,
+    twilioClient: twilioMock,
+    // Use real LLM; optionally log
+    llmCaller: logLLM
+      ? async (opts) => {
+          const start = Date.now();
+          const res = await callLLM(opts);
+          console.log(
+            '[LLM DEBUG]',
+            opts.emailObj?.message_id,
+            'latency_ms=',
+            res.latencyMs,
+            'tokens=',
+            res.tokens,
+            'content=',
+            res.content
+          );
+          return res;
+        }
+      : undefined,
+    llmHealthChecker: undefined,
       startPolling: false,
       skipTwilioStartupCheck: true,
       startServer: false

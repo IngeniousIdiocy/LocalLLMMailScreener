@@ -1,0 +1,14 @@
+[
+  {
+    "id": "judge_urgent",
+    "raw_file": "raw/judge_urgent.eml",
+    "expect_notify": true,
+    "description": "Vendor reports fraudulent charges and asks for immediate confirmation"
+  },
+  {
+    "id": "judge_nonurgent",
+    "raw_file": "raw/judge_nonurgent.eml",
+    "expect_notify": false,
+    "description": "Marketing newsletter with no action required"
+  }
+]

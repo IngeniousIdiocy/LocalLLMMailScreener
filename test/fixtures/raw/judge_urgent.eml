@@ -1,0 +1,12 @@
+From: Fraud Alert <alerts@bankco.example.com>
+To: Mark <mark@example.com>
+Subject: ACTION REQUIRED: Suspicious transaction on your card
+Date: Fri, 01 Mar 2024 08:45:00 -0000
+Message-ID: <judge_urgent@example.com>
+Content-Type: text/plain; charset="UTF-8"
+
+We detected a $4,320.00 charge in Singapore at 03:41 UTC on Card **** 4421.
+
+If you did NOT authorize this, reply or call the security hotline immediately to block further charges.
+
+If this was you, confirm the transaction so we can unblock your card.

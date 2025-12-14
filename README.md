@@ -237,10 +237,13 @@ LEGEND:
 - Health rules: Gmail = success within 2× poll interval; LLM = success within 5 min or recent health check; Twilio = success within 24h or startup credential check.
 
 ### Testing
-- `npm test` runs four scenario tests with fully mocked Gmail/LLM/Twilio (no external calls).
-- Mock fixtures live in `test/fixtures/emails.json` and `test/fixtures/llm_responses.json`; helpers in `test/helpers.js`.
-- Scenarios covered: happy-path notify, invalid LLM JSON, Twilio send failure, and LLM timeout handling.
+- `npm test` runs mocked scenarios (no external calls) plus parser checks:
+  - Happy-path notify, invalid LLM JSON, Twilio send failure, LLM timeout handling
+  - Raw email parsing (plain text and HTML-only)
+- Fixtures: `test/fixtures/emails.json`, `test/fixtures/llm_responses.json`, raw `.eml` files under `test/fixtures/raw/`, judgment set in `test/fixtures/llm_judgment_cases.json`.
 - Optional integration toggles (skipped unless enabled):
   - `TEST_REAL_LLM=1 npm test` → real LLM, mocked Gmail/Twilio
   - `TEST_REAL_LLM=1 TEST_REAL_GMAIL=1 npm test` → real Gmail+LLM, mocked Twilio (requires Gmail creds set)
   - Tests never use real Twilio to avoid live SMS; keep `TEST_REAL_TWILIO` unset.
+- LLM debug logging during real-LLM test: add `TEST_LLM_DEBUG=1 npm test` to print request IDs, latency, tokens, and raw content from the local LLM in the real-LLM scenario.
+- Real LLM judgment checks (skipped unless `TEST_REAL_LLM=1`): per-email tests named after the subject, using controlled urgent/non-urgent mocks from `test/fixtures/llm_judgment_cases.json` + raw `.eml` files.
