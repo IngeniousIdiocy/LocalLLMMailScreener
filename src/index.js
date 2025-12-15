@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 
 import { createGmailClient, listMessages, fetchRawMessage, parseRawEmail, gmailLinkFor } from './gmail.js';
 import { callLLM, healthCheckLLM } from './llm.js';
+import { trimEmailForLLM } from './email_trim.js';
 import { createTwilioClient, sendSms, checkTwilioCredentials } from './twilio.js';
 import { createStateManager } from './state.js';
 
@@ -29,6 +30,7 @@ export const buildConfig = (env = process.env) => ({
   llmTemperature: parseFloat(env.LLM_TEMPERATURE || '0.2'),
   llmMaxOutputTokens: parseInt(env.LLM_MAX_OUTPUT_TOKENS || '300', 10),
   llmTimeoutMs: parseInt(env.LLM_TIMEOUT_MS || '120000', 10),
+  maxEmailBodyChars: parseInt(env.MAX_EMAIL_BODY_CHARS || '4000', 10),
   dryRun: (env.DRY_RUN || 'false').toLowerCase() === 'true',
   llmApiKey: env.LLM_API_KEY || '',
   gmailClientId: env.GMAIL_CLIENT_ID,
@@ -100,6 +102,8 @@ const processSingleMessage = async (ctx, messageMeta, state) => {
       attachments: parsed.attachments
     };
 
+    const trimmedEmail = trimEmailForLLM(emailObj, { maxBodyChars: ctx.config.maxEmailBodyChars });
+
     ctx.stateManager.bumpLLMRequests();
     let decision;
     try {
@@ -110,7 +114,7 @@ const processSingleMessage = async (ctx, messageMeta, state) => {
         temperature: ctx.config.llmTemperature,
         maxOutputTokens: ctx.config.llmMaxOutputTokens,
         timeoutMs: ctx.config.llmTimeoutMs,
-        emailObj,
+        emailObj: trimmedEmail,
         maxSmsChars: ctx.config.maxSmsChars
       });
       ctx.stateManager.addTokenEvent(llmRes.tokens);
@@ -126,6 +130,7 @@ const processSingleMessage = async (ctx, messageMeta, state) => {
         gmail_link: gmailLink,
         from: parsed.from,
         subject: parsed.subject,
+        trim_stats: trimmedEmail.stats,
         decided_at: Date.now()
       };
     } catch (err) {
@@ -141,6 +146,7 @@ const processSingleMessage = async (ctx, messageMeta, state) => {
         gmail_link: gmailLink,
         from: parsed.from,
         subject: parsed.subject,
+        trim_stats: trimmedEmail.stats,
         decided_at: Date.now()
       };
     }
@@ -303,6 +309,7 @@ const buildStatusSnapshot = (ctx) => {
       poll_max_results: ctx.config.pollMaxResults,
       gmail_query: ctx.config.gmailQuery,
       max_sms_chars: ctx.config.maxSmsChars,
+      max_email_body_chars: ctx.config.maxEmailBodyChars,
       max_concurrency: ctx.config.maxConcurrency,
       dry_run: ctx.config.dryRun,
       llm_base_url: ctx.config.llmBaseUrl,

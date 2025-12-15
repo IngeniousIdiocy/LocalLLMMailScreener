@@ -130,7 +130,8 @@ Node.js (ESM) service that polls Gmail, sends each new email to a local OpenAI-c
 │     │              POST /v1/chat/completions                            │    │
 │     │                                                                   │    │
 │     │   Prompt includes:                                                │    │
-│     │   • Full email JSON (from, to, cc, subject, body, attachments)    │    │
+│     │   • Trimmed email JSON (key headers, cleaned body text,           │    │
+│     │     attachment metadata only)                                     │    │
 │     │   • Instructions to output strict JSON with:                      │    │
 │     │     { notify: bool, message_packet: {...}, confidence, reason }   │    │
 │     └───────────────────────────────┬───────────────────────────────────┘    │
@@ -218,10 +219,11 @@ LEGEND:
 ### Environment
 - `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` (OAuth2, userId=`me`)
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`, `TWILIO_TO`
-- Optional knobs: `PORT`, `POLL_INTERVAL_MS`, `POLL_MAX_RESULTS`, `GMAIL_QUERY`, `STATE_PATH`, `MAX_PROCESSED_IDS`, `RECENT_LIMIT`, `MAX_SMS_CHARS`, `MAX_CONCURRENCY`, `DRY_RUN`, `LLM_*` (base URL/model/temperature/timeouts)
+- Optional knobs: `PORT`, `POLL_INTERVAL_MS`, `POLL_MAX_RESULTS`, `GMAIL_QUERY`, `STATE_PATH`, `MAX_PROCESSED_IDS`, `RECENT_LIMIT`, `MAX_SMS_CHARS`, `MAX_EMAIL_BODY_CHARS`, `MAX_CONCURRENCY`, `DRY_RUN`, `LLM_*` (base URL/model/temperature/timeouts)
 
 ### Behavior
 - Polls Gmail inbox on the configured interval; fetches raw messages, parses to text (fallback from HTML).
+- Emails are normalized and trimmed before LLM use (reply chains/forwards and footer noise removed, attachments kept as metadata only, body capped to `MAX_EMAIL_BODY_CHARS`, default 4000, with head+tail preserved).
 - Every new email is sent to the local LLM (`/v1/chat/completions`), enforcing strict JSON output.
 - If `notify=true`, sends SMS via Twilio (or skips when `DRY_RUN=true`) with truncation to `MAX_SMS_CHARS`.
 - State (processed IDs, decisions, sends, token stats) persists to `STATE_PATH` atomically.
