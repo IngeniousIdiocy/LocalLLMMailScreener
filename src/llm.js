@@ -13,7 +13,13 @@ Schema:
   "confidence": 0..1,
   "reason": "short string"
 }
-If email needs my attention (action required, time-sensitive, direct question, security/finance/ops issues), notify=true; otherwise false. If notify=false, still provide a short title/body. Ensure JSON is valid and matches the schema exactly.`.trim();
+If email needs my attention (action required, time-sensitive, direct question, security/finance/ops issues), notify=true; otherwise false.
+
+Security rules:
+- Routine camera motion for passing vehicles/animals is noise -> notify=false.
+- Notify=true for real alarms: siren, glass break, water/leak sensor, smoke/CO, door/window left open, abnormal/after-hours events (e.g., garage opens at 3am), or repeated/abnormal sensor behavior.
+
+If notify=false, still provide a short title/body. Ensure JSON is valid and matches the schema exactly.`.trim();
 
 const buildUserPrompt = (emailObj, maxSmsChars) => {
   const emailJson = JSON.stringify(emailObj, null, 2);
