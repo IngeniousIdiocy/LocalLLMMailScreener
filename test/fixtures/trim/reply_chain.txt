@@ -1,0 +1,18 @@
+Hi Bob,
+Latest numbers look good. Let's sync tomorrow.
+
+Thanks,
+Alice
+
+On Tue, Feb 6, 2024 at 10:00 AM Bob <bob@example.com> wrote:
+> Old message line one
+> Another quoted line
+>
+> Final quoted line
+
+-----Original Message-----
+From: Bob <bob@example.com>
+Sent: Monday, February 5, 2024 09:00 AM
+To: Alice <alice@example.com>
+Subject: Re: Status
+Historical content that should be trimmed.
