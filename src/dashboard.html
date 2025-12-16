@@ -181,16 +181,18 @@
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
       gap: 14px;
+      align-items: stretch;
     }
 
     .notification-card {
       background: rgba(255,255,255,0.03);
       border: 1px solid var(--glass-border);
       border-radius: 12px;
-      padding: 16px;
+      padding: 14px 16px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 8px;
+      height: 100%;
       transition: background 0.2s ease, border-color 0.2s ease;
     }
 
@@ -199,88 +201,65 @@
       border-color: rgba(255,255,255,0.15);
     }
 
-    .notification-card.high {
-      border-left: 3px solid var(--danger);
-    }
+    .notification-card.high { border-left: 3px solid var(--danger); }
+    .notification-card.normal { border-left: 3px solid var(--accent); }
+    .notification-card.low { border-left: 3px solid var(--muted); }
 
-    .notification-card.normal {
-      border-left: 3px solid var(--accent);
-    }
-
-    .notification-card.low {
-      border-left: 3px solid var(--muted);
-    }
-
-    .notif-header {
+    .notif-row {
       display: flex;
-      align-items: flex-start;
       justify-content: space-between;
-      gap: 12px;
-    }
-
-    .notif-subject {
-      font-weight: 600;
-      font-size: 14px;
-      line-height: 1.4;
-      flex: 1;
-      word-break: break-word;
-    }
-
-    .pill {
-      padding: 3px 10px;
-      border-radius: 999px;
-      font-weight: 600;
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      flex-shrink: 0;
-    }
-
-    .pill.high { background: rgba(239,68,68,0.15); color: var(--danger); }
-    .pill.normal { background: rgba(65,214,255,0.15); color: var(--accent); }
-    .pill.low { background: rgba(148,163,184,0.2); color: var(--muted); }
-
-    .notif-meta {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 16px;
       font-size: 12px;
       color: var(--muted);
     }
 
-    .notif-meta-item {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
-
-    .notif-meta-label {
+    .notif-label {
+      color: var(--muted);
       opacity: 0.7;
+      margin-right: 4px;
     }
 
-    .notif-preview {
+    .notif-field {
       font-size: 13px;
-      line-height: 1.5;
+      line-height: 1.4;
+    }
+
+    .notif-field .notif-label {
+      display: inline;
+    }
+
+    .notif-field .notif-value {
       color: var(--text);
-      opacity: 0.85;
-      background: rgba(0,0,0,0.2);
-      border-radius: 8px;
-      padding: 10px 12px;
+    }
+
+    .notif-field .notif-value.truncate {
+      display: inline-block;
+      max-width: calc(100% - 60px);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      vertical-align: bottom;
     }
 
     .notif-footer {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding-top: 8px;
+      padding-top: 10px;
+      margin-top: 4px;
       border-top: 1px solid rgba(255,255,255,0.06);
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: auto;
     }
 
     .notif-id {
       font-size: 10px;
       color: var(--muted);
       font-family: monospace;
-      opacity: 0.7;
+      opacity: 0.6;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .notif-link {
@@ -288,15 +267,15 @@
       text-decoration: none;
       font-size: 12px;
       font-weight: 600;
-      padding: 4px 10px;
+      padding: 5px 12px;
       border-radius: 6px;
       background: rgba(65,214,255,0.1);
       transition: background 0.2s ease;
+      white-space: nowrap;
     }
 
     .notif-link:hover {
       background: rgba(65,214,255,0.2);
-      text-decoration: none;
     }
 
     .empty-state {
@@ -448,32 +427,27 @@
           ? `<a href="${s.gmail_link}" target="_blank" class="notif-link">Open in Gmail</a>` 
           : '';
         const provider = s.notification_provider || 'notification';
+        const reasonText = (s.reason || preview || '').trim();
 
         return `
           <div class="notification-card ${urgency}">
-            <div class="notif-header">
-              <div class="notif-subject">${s.subject || 'No subject'}</div>
-              ${urgencyPill(urgency)}
+            <div class="notif-row">
+              <span><span class="notif-label">From:</span> ${s.from || '—'}</span>
+              <span><span class="notif-label">Sent:</span> ${fmtTimeShort(s.sent_at)}</span>
             </div>
-            <div class="notif-meta">
-              <div class="notif-meta-item">
-                <span class="notif-meta-label">From:</span>
-                <span>${s.from || '—'}</span>
-              </div>
-              <div class="notif-meta-item">
-                <span class="notif-meta-label">Sent:</span>
-                <span>${fmtTimeShort(s.sent_at)}</span>
-              </div>
-              <div class="notif-meta-item">
-                <span class="notif-meta-label">Via:</span>
-                <span>${provider}</span>
-              </div>
-              <div class="notif-meta-item">
-                <span class="notif-meta-label">Tokens:</span>
-                <span>${s.tokens_for_email || 0}</span>
-              </div>
+            <div class="notif-row">
+              <span><span class="notif-label">Via:</span> ${provider}</span>
+              <span><span class="notif-label">Tokens:</span> ${s.tokens_for_email || 0}</span>
             </div>
-            ${preview ? `<div class="notif-preview">${preview}</div>` : ''}
+            <div class="notif-field">
+              <span class="notif-label">Subject:</span>
+              <span class="notif-value truncate">${s.subject || 'No subject'}</span>
+            </div>
+            ${reasonText ? `
+            <div class="notif-field">
+              <span class="notif-label">Reason:</span>
+              <span class="notif-value">${reasonText}</span>
+            </div>` : ''}
             <div class="notif-footer">
               <span class="notif-id">${notifId}</span>
               ${gmailLink}
