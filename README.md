@@ -2,7 +2,7 @@
 
 Node.js (ESM) service that polls Gmail, sends each new email to a local OpenAI-compatible LLM, and optionally forwards summarized notifications based on the LLMs assessment of importance via Twilio SMS or Pushover (emergency mode). Includes a lightweight dashboard and JSON status API.
 
-![Dashboard UI Screenshot](Dashboard UI Screenshot.png)
+![Dashboard UI Screenshot](https://raw.githubusercontent.com/IngeniousIdiocy/LocalLLMMailScreener/main/Dashboard_UI_Screenshot.png)
 
 ---
 
