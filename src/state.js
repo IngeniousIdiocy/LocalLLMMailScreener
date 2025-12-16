@@ -14,6 +14,7 @@ const defaultState = () => ({
     last_24h_tokens_est: 0,
     gmail: { last_ok_at: 0, last_error: '', last_poll_at: 0 },
     llm: { last_ok_at: 0, last_error: '', last_latency_ms: 0, avg_latency_ms: 0, last_health_check_at: 0 },
+    llm_queue: { depth: 0, pending: 0, running: 0, dropped_total: 0, last_dropped_at: 0, last_dropped_id: '', max_queue: 0 },
     twilio: { last_ok_at: 0, last_error: '', startup_ok_at: 0 },
     pushover: { last_ok_at: 0, last_error: '', startup_ok_at: 0 }
   }
@@ -33,6 +34,7 @@ export const createStateManager = ({
   tokenEventLimit = 5000
 }) => {
   let state = defaultState();
+  let saveQueue = Promise.resolve();
 
   const load = async () => {
     try {
@@ -53,10 +55,15 @@ export const createStateManager = ({
   };
 
   const save = async () => {
-    prune();
-    computeLast24h();
-    await atomicWriteFile(statePath, JSON.stringify(state, null, 2));
-    return state;
+    saveQueue = saveQueue
+      .catch(() => {})
+      .then(async () => {
+        prune();
+        computeLast24h();
+        await atomicWriteFile(statePath, JSON.stringify(state, null, 2));
+        return state;
+      });
+    return saveQueue;
   };
 
   const computeLast24h = () => {
@@ -142,6 +149,16 @@ export const createStateManager = ({
     }
   };
 
+  const setLLMQueueStats = (queueStats = {}) => {
+    state.stats.llm_queue = { ...state.stats.llm_queue, ...queueStats };
+  };
+
+  const incrementLLMQueueDropped = (messageId = '') => {
+    state.stats.llm_queue.dropped_total += 1;
+    state.stats.llm_queue.last_dropped_at = Date.now();
+    state.stats.llm_queue.last_dropped_id = messageId || state.stats.llm_queue.last_dropped_id;
+  };
+
   const setTwilioOk = () => {
     const now = Date.now();
     state.stats.twilio.last_ok_at = now;
@@ -182,6 +199,8 @@ export const createStateManager = ({
     setLLMOk,
     setLLMError,
     setLLMHealthCheck,
+    setLLMQueueStats,
+    incrementLLMQueueDropped,
     setTwilioOk,
     setTwilioError,
     setPushoverOk,

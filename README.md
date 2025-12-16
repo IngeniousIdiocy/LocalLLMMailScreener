@@ -222,24 +222,24 @@ LEGEND:
   - `NOTIFICATION_SERVICE` (`twilio` | `pushover`, default `twilio`)
   - Twilio: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`, `TWILIO_TO`
   - Pushover (emergency priority=2): `PUSHOVER_TOKEN` (or `PUSHOVER_API_TOKEN`), `PUSHOVER_USER`, optional `PUSHOVER_DEVICE`
-- Optional knobs: `PORT`, `POLL_INTERVAL_MS`, `POLL_GRACE_MS` (default 5000ms overlap to avoid gaps), `POLL_WINDOW_MS` (override window size; defaults to `POLL_INTERVAL_MS`), `POLL_MAX_RESULTS`, `GMAIL_QUERY`, `STATE_PATH`, `MAX_PROCESSED_IDS`, `RECENT_LIMIT`, `MAX_SMS_CHARS`, `MAX_EMAIL_BODY_CHARS`, `MAX_CONCURRENCY`, `DRY_RUN`, `LLM_*` (base URL/model/temperature/timeouts)
+- Optional knobs: `PORT`, `POLL_INTERVAL_MS`, `POLL_GRACE_MS` (default 5000ms overlap to avoid gaps), `POLL_WINDOW_MS` (override window size; defaults to `POLL_INTERVAL_MS`), `POLL_MAX_RESULTS`, `GMAIL_QUERY`, `STATE_PATH`, `MAX_PROCESSED_IDS`, `RECENT_LIMIT`, `MAX_SMS_CHARS`, `MAX_EMAIL_BODY_CHARS`, `MAX_LLM_CONCURRENCY` (alias: legacy `MAX_CONCURRENCY`), `MAX_LLM_QUEUE` (default 20), `DRY_RUN`, `LLM_*` (base URL/model/temperature/timeouts)
 
 ### Behavior
-- Polls Gmail inbox on the configured interval; each poll (including the first) uses `after:<now - POLL_INTERVAL_MS - POLL_GRACE_MS>` to only pull mail from the most recent interval with a small 5s overlap to avoid missing messages between timers. If no emails arrived in that window, nothing is processed until the next interval.
+- Polls Gmail inbox on the configured interval and immediately enqueues any new IDs found (bounded by `MAX_LLM_QUEUE`, default 20). The Gmail poll itself does not wait for LLM work. Oldest queued emails are dropped (counted in stats) if the queue would exceed the cap. Each poll still uses `after:<now - (POLL_WINDOW_MS||POLL_INTERVAL_MS) - POLL_GRACE_MS>` (default 5s grace); widen the window if processing delays exceed the interval.
 - Emails are normalized and trimmed before LLM use (reply chains/forwards and footer noise removed, attachments kept as metadata only, body capped to `MAX_EMAIL_BODY_CHARS`, default 4000, with head+tail preserved).
-- Every new email is sent to the local LLM (`/v1/chat/completions`), enforcing strict JSON output.
+- Every enqueued email is sent to the local LLM (`/v1/chat/completions`), enforcing strict JSON output, with `MAX_LLM_CONCURRENCY` parallel workers (default 3).
 - If `notify=true`, sends via the configured notification service:
   - Twilio SMS (truncated to `MAX_SMS_CHARS`, or skipped when `DRY_RUN=true`).
   - Pushover emergency mode (priority=2) with `retry=100`, `expire=7d`, using the same truncated body.
-- State (processed IDs, decisions, sends, token stats) persists to `STATE_PATH` atomically.
-- Dashboard shows Gmail/LLM/Notification health, token estimates (total + last 24h), and recent notifications.
+- State (processed IDs, decisions, sends, token stats, queue stats) persists to `STATE_PATH` atomically.
+- Dashboard shows Gmail/LLM/Notification health, token estimates (total + last 24h), LLM queue depth/drops, average TPS over the last five emails, and recent notifications.
 
 ### Endpoints
 - `GET /` — dashboard UI
 - `GET /api/status` — health/stats/recent sends as JSON
 
 ### Notes
-- Uses concurrency limiting on email processing to avoid overloading the LLM.
+- Uses a bounded LLM queue (`MAX_LLM_QUEUE`) with `MAX_LLM_CONCURRENCY` workers; oldest pending emails are dropped (counted in stats) when the queue would overflow.
 - Token estimation uses `usage.total_tokens` when present, otherwise `(input_chars + output_chars)/4` (ceil).
 - Health rules: Gmail = success within 2× poll interval; LLM = success within 5 min or recent health check; Notification (Twilio/Pushover) = success within 24h or startup credential check.
 

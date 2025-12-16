@@ -159,12 +159,17 @@
     };
 
     const renderStats = (stats) => {
+      const queue = stats.llm_queue || {};
+      const tps = stats.llm_tps || {};
       const items = [
         { label: 'Total Tokens (est)', value: stats.tokens_total_est || 0 },
         { label: 'Tokens Last 24h (est)', value: stats.last_24h_tokens_est || 0 },
         { label: 'Emails Processed', value: stats.emails_processed || 0 },
         { label: 'Notifications Sent', value: stats.notifications_sent || 0 },
-        { label: 'LLM Requests', value: stats.llm_requests || 0 }
+        { label: 'LLM Requests', value: stats.llm_requests || 0 },
+        { label: 'LLM Queue Depth', value: `${queue.depth || 0} / ${queue.max_queue || 0}` },
+        { label: 'LLM Queue Dropped', value: queue.dropped_total || 0 },
+        { label: 'LLM TPS (avg last 5)', value: tps.avg_tps || 0 }
       ];
       statsGrid.innerHTML = items.map(i => `<div class="stat"><div class="label">${i.label}</div><div class="value">${i.value}</div></div>`).join('');
     };
@@ -189,7 +194,7 @@
 
     const renderConfig = (cfg) => {
       const svc = cfg.notification_service || 'twilio';
-      configEl.textContent = `Polling ${cfg.poll_interval_ms}ms | Concurrency ${cfg.max_concurrency} | Dry run ${cfg.dry_run} | Notify via ${svc}`;
+      configEl.textContent = `Polling ${cfg.poll_interval_ms}ms | LLM conc ${cfg.max_llm_concurrency} | Queue cap ${cfg.max_llm_queue} | Dry run ${cfg.dry_run} | Notify via ${svc}`;
     };
 
     const refresh = async () => {

@@ -15,6 +15,18 @@ import { createStateManager } from './state.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const log = (...args) => console.log(new Date().toISOString(), ...args);
+const fmtVal = (v) => {
+  if (v === undefined || v === null) return '-';
+  if (typeof v === 'number' || typeof v === 'boolean') return v;
+  const str = String(v).replace(/"/g, "'");
+  return /\s/.test(str) ? `"${str}"` : str;
+};
+const logEvent = (tag, fields = {}) => {
+  const parts = Object.entries(fields)
+    .filter(([, v]) => v !== undefined)
+    .map(([k, v]) => `${k}=${fmtVal(v)}`);
+  log(`[${tag}]`, parts.join(' '));
+};
 
 const buildGmailQuery = (baseQuery, afterMs) => {
   const trimmed = (baseQuery || '').trim();
@@ -37,7 +49,8 @@ export const buildConfig = (env = process.env) => ({
   maxProcessedIds: parseInt(env.MAX_PROCESSED_IDS || '50000', 10),
   recentLimit: parseInt(env.RECENT_LIMIT || '200', 10),
   maxSmsChars: parseInt(env.MAX_SMS_CHARS || '900', 10),
-  maxConcurrency: parseInt(env.MAX_CONCURRENCY || '3', 10),
+  maxLlmConcurrency: parseInt(env.MAX_LLM_CONCURRENCY || env.MAX_CONCURRENCY || '3', 10),
+  maxLlmQueue: parseInt(env.MAX_LLM_QUEUE || '20', 10),
   llmBaseUrl: env.LLM_BASE_URL || 'http://127.0.0.1:8080',
   llmModel: env.LLM_MODEL || 'local-model',
   llmTemperature: parseFloat(env.LLM_TEMPERATURE || '0.2'),
@@ -59,34 +72,101 @@ export const buildConfig = (env = process.env) => ({
   pushoverDevice: env.PUSHOVER_DEVICE
 });
 
-const createLimiter = (maxConcurrency) => {
-  let running = 0;
-  const queue = [];
-  const next = () => {
-    if (running >= maxConcurrency) return;
-    const task = queue.shift();
-    if (!task) return;
-    running += 1;
-    task()
-      .catch((err) => log('Task error', err.message))
-      .finally(() => {
-        running -= 1;
-        next();
-      });
-  };
-  const schedule = (fn) =>
-    new Promise((resolve, reject) => {
-      queue.push(async () => {
-        try {
-          const res = await fn();
-          resolve(res);
-        } catch (err) {
-          reject(err);
-        }
-      });
-      next();
+const createLlmQueue = ({ maxConcurrency, maxQueue, processFn, onDrop, onStats }) => {
+  const pending = [];
+  const pendingIds = new Set();
+  const runningIds = new Set();
+  let droppedTotal = 0;
+  let lastDroppedAt = 0;
+  const idleResolvers = [];
+
+  const depth = () => pending.length + runningIds.size;
+  const publishStats = () =>
+    onStats?.({
+      depth: depth(),
+      pending: pending.length,
+      running: runningIds.size,
+      dropped_total: droppedTotal,
+      last_dropped_at: lastDroppedAt,
+      max_queue: maxQueue
     });
-  return schedule;
+
+  const notifyIdle = () => {
+    if (pending.length === 0 && runningIds.size === 0) {
+      while (idleResolvers.length) {
+        const resolve = idleResolvers.shift();
+        resolve();
+      }
+    }
+  };
+
+  const dropOldest = () => {
+    const dropped = pending.shift();
+    if (!dropped) return null;
+    if (dropped.id) pendingIds.delete(dropped.id);
+    droppedTotal += 1;
+    lastDroppedAt = Date.now();
+    onDrop?.(dropped);
+    logEvent('LLM_QUEUE', { event: 'drop', id: dropped.id, depth: depth(), max: maxQueue });
+    publishStats();
+    notifyIdle();
+    return dropped;
+  };
+
+  const enforceCapacity = () => {
+    while (maxQueue > 0 && depth() > maxQueue && pending.length) {
+      dropOldest();
+    }
+  };
+
+  const pump = () => {
+    publishStats();
+    notifyIdle();
+    while (runningIds.size < maxConcurrency && pending.length) {
+      const task = pending.shift();
+      if (task.id) pendingIds.delete(task.id);
+      const key = task.id || Symbol('llm-task');
+      runningIds.add(key);
+      publishStats();
+      Promise.resolve()
+        .then(() => processFn(task))
+        .catch((err) => logEvent('TASK', { event: 'error', error: err.message }))
+        .finally(() => {
+          runningIds.delete(key);
+          publishStats();
+          notifyIdle();
+          pump();
+        });
+    }
+  };
+
+  const enqueue = (task) => {
+    const id = task.id;
+    if (id && (pendingIds.has(id) || runningIds.has(id))) {
+      return { enqueued: false, reason: 'duplicate' };
+    }
+    pending.push(task);
+    if (id) pendingIds.add(id);
+    enforceCapacity();
+    pump();
+    return { enqueued: true };
+  };
+
+  return {
+    enqueue,
+    stats: () => ({
+      depth: depth(),
+      pending: pending.length,
+      running: runningIds.size,
+      dropped_total: droppedTotal,
+      last_dropped_at: lastDroppedAt,
+      max_queue: maxQueue
+    }),
+    whenIdle: () => {
+      if (pending.length === 0 && runningIds.size === 0) return Promise.resolve();
+      return new Promise((resolve) => idleResolvers.push(resolve));
+    }
+  };
 };
 
 const ensureStateDir = async (statePath) => {
@@ -95,10 +175,28 @@ const ensureStateDir = async (statePath) => {
 };
 
 const tokenCountFromDecision = (decision) => decision?.tokens || 0;
+const computeRecentTps = (decisions, limit = 5) => {
+  if (!Array.isArray(decisions) || decisions.length === 0) {
+    return { avg_tps: 0, samples: 0 };
+  }
+  const latest = decisions.slice(-limit);
+  const samples = latest
+    .map((d) => {
+      const tokens = d.tokens || 0;
+      const latencyMs = d.llm_latency_ms || 0;
+      if (!latencyMs) return null;
+      const tps = tokens / (latencyMs / 1000);
+      return Number.isFinite(tps) ? tps : null;
+    })
+    .filter((v) => v !== null);
+  if (!samples.length) return { avg_tps: 0, samples: 0 };
+  const avg = samples.reduce((sum, v) => sum + v, 0) / samples.length;
+  return { avg_tps: Math.round(avg * 100) / 100, samples: samples.length };
+};
 
-const processSingleMessage = async (ctx, messageMeta, state) => {
+const processSingleMessage = async (ctx, messageMeta) => {
   const messageId = messageMeta.id;
-  if (state.processed[messageId]) {
+  if (ctx.stateManager.getState().processed[messageId]) {
     return;
   }
 
@@ -177,6 +275,15 @@ const processSingleMessage = async (ctx, messageMeta, state) => {
     }
   }
 
+    logEvent('LLM_DECISION', {
+      notify: decision.notify ? 'yes' : 'no',
+      from: decision.from,
+      subject: decision.subject,
+      reason: decision.reason,
+      tokens: decision.tokens,
+      latency_ms: decision.llm_latency_ms
+    });
+
     ctx.stateManager.addDecision(decision);
     const shouldNotify = !!decision.notify;
 
@@ -197,6 +304,14 @@ const processSingleMessage = async (ctx, messageMeta, state) => {
             dryRun: ctx.config.dryRun
           });
           ctx.stateManager.setTwilioOk();
+          logEvent('TWILIO', {
+            send: 'ok',
+            to: ctx.config.twilioTo,
+            from: parsed.from,
+            subject: parsed.subject,
+            urgency: packet.urgency || 'normal',
+            sid: sendResult.sid
+          });
           ctx.stateManager.addSend({
             sent_at: Date.now(),
             from: parsed.from,
@@ -211,7 +326,14 @@ const processSingleMessage = async (ctx, messageMeta, state) => {
           });
         } catch (err) {
           ctx.stateManager.setTwilioError(err.message);
-          log('Twilio send failed', err.message);
+          logEvent('TWILIO', {
+            send: 'fail',
+            to: ctx.config.twilioTo,
+            from: parsed.from,
+            subject: parsed.subject,
+            urgency: packet.urgency || 'normal',
+            error: err.message
+          });
         }
       } else if (service === 'pushover') {
         try {
@@ -227,6 +349,15 @@ const processSingleMessage = async (ctx, messageMeta, state) => {
             dryRun: ctx.config.dryRun
           });
           ctx.stateManager.setPushoverOk();
+          logEvent('PUSHOVER', {
+            send: 'ok',
+            to: ctx.config.pushoverUser,
+            device: ctx.config.pushoverDevice,
+            from: parsed.from,
+            subject: parsed.subject,
+            urgency: packet.urgency || 'normal',
+            receipt: sendResult.receipt
+          });
           ctx.stateManager.addSend({
             sent_at: Date.now(),
             from: parsed.from,
@@ -241,13 +372,21 @@ const processSingleMessage = async (ctx, messageMeta, state) => {
           });
         } catch (err) {
           ctx.stateManager.setPushoverError(err.message);
-          log('Pushover send failed', err.message);
+          logEvent('PUSHOVER', {
+            send: 'fail',
+            to: ctx.config.pushoverUser,
+            device: ctx.config.pushoverDevice,
+            from: parsed.from,
+            subject: parsed.subject,
+            urgency: packet.urgency || 'normal',
+            error: err.message
+          });
         }
       } else {
         const msg = `Notification service not recognized: ${service}`;
         ctx.stateManager.setTwilioError(msg);
         ctx.stateManager.setPushoverError(msg);
-        log(msg);
+        logEvent('NOTIFY', { send: 'fail', error: msg });
       }
     }
 
@@ -256,9 +395,11 @@ const processSingleMessage = async (ctx, messageMeta, state) => {
       decision.reason?.startsWith('LLM failure') ? 'error' : 'ok',
       decision.reason || ''
     );
+    await ctx.stateManager.save();
   } catch (err) {
-    log('Processing message failed', messageId, err.message);
+    logEvent('PROCESS', { id: messageId, status: 'fail', error: err.message });
     ctx.stateManager.markProcessed(messageId, 'error', err.message);
+    await ctx.stateManager.save();
   }
 };
 
@@ -281,15 +422,21 @@ const pollGmail = async (ctx) => {
     });
     ctx.stateManager.setGmailOk();
     const newMessages = messages.filter((m) => !state.processed[m.id]);
-    if (newMessages.length) {
-      log(`Found ${newMessages.length} new messages`);
+    logEvent('GMAIL', {
+      poll: 'ok',
+      new: newMessages.length,
+      max_results: effectiveMaxResults,
+      query: effectiveQuery,
+      window_ms: ctx.config.pollWindowMs ?? ctx.config.pollIntervalMs,
+      grace_ms: ctx.config.pollGraceMs
+    });
+    for (const m of newMessages) {
+      ctx.llmQueue.enqueue({ id: m.id, messageMeta: m });
     }
-    const tasks = newMessages.map((m) => ctx.limiter(() => processSingleMessage(ctx, m, state)));
-    await Promise.allSettled(tasks);
   } catch (err) {
     ctx.stateManager.revertGmailPoll(previousPollAt);
     ctx.stateManager.setGmailError(err.message);
-    log('Gmail poll failed', err.message);
+    logEvent('GMAIL', { poll: 'fail', error: err.message });
   } finally {
     await ctx.stateManager.save();
     ctx.pollLock = false;
@@ -405,9 +552,11 @@ const buildStatusSnapshot = (ctx) => {
   const current = ctx.stateManager.getState();
   const stats = current.stats;
   const health = buildHealth(ctx, stats);
+  const llmTps = computeRecentTps(current.recent_decisions || []);
+  const statsWithDerived = { ...stats, llm_tps: llmTps };
   return {
     health,
-    stats,
+    stats: statsWithDerived,
     recent_sends: [...(current.recent_sends || [])].slice(-50).reverse(),
     recent_decisions: [...(current.recent_decisions || [])].slice(-20).reverse(),
     config_sanitized: {
@@ -418,7 +567,8 @@ const buildStatusSnapshot = (ctx) => {
       gmail_query: ctx.config.gmailQuery,
       max_sms_chars: ctx.config.maxSmsChars,
       max_email_body_chars: ctx.config.maxEmailBodyChars,
-      max_concurrency: ctx.config.maxConcurrency,
+      max_llm_concurrency: ctx.config.maxLlmConcurrency,
+      max_llm_queue: ctx.config.maxLlmQueue,
       dry_run: ctx.config.dryRun,
       notification_service: ctx.config.notificationService,
       llm_base_url: ctx.config.llmBaseUrl,
@@ -430,6 +580,12 @@ const buildStatusSnapshot = (ctx) => {
 const startServer = (ctx) => {
   const app = express();
   app.use(express.json());
+  app.use((req, res, next) => {
+    if (req.path === '/' || req.path.startsWith('/api')) {
+      logEvent('DASHBOARD', { path: req.path, method: req.method });
+    }
+    next();
+  });
 
   app.get('/api/status', (req, res) => {
     res.json(buildStatusSnapshot(ctx));
@@ -441,7 +597,7 @@ const startServer = (ctx) => {
   });
 
   const server = app.listen(ctx.config.port, () => {
-    log(`Server listening on port ${server.address().port}`);
+    logEvent('SERVER', { listening: server.address().port });
   });
 
   return { app, server };
@@ -476,8 +632,6 @@ export const startApp = async (overrides = {}) => {
       recentLimit: config.recentLimit
     });
 
-  const limiter = createLimiter(config.maxConcurrency);
-
   const ctx = {
     config,
     gmailClient,
@@ -485,7 +639,7 @@ export const startApp = async (overrides = {}) => {
     pushoverSender,
     pushoverValidator,
     stateManager,
-    limiter,
+    llmQueue: null,
     callLLM: overrides.llmCaller || callLLM,
     llmHealthCheck: overrides.llmHealthChecker || healthCheckLLM,
     onDecision: overrides.onDecision,
@@ -493,8 +647,23 @@ export const startApp = async (overrides = {}) => {
     pollTimer: null
   };
 
+  const llmQueue = createLlmQueue({
+    maxConcurrency: config.maxLlmConcurrency,
+    maxQueue: config.maxLlmQueue,
+    processFn: ({ messageMeta }) => processSingleMessage(ctx, messageMeta),
+    onDrop: ({ id }) => {
+      const reason = 'Dropped due to LLM queue overflow';
+      ctx.stateManager.incrementLLMQueueDropped(id || '');
+      if (id) ctx.stateManager.markProcessed(id, 'dropped', reason);
+      ctx.stateManager.save().catch((err) => log('Queue drop save failed', err.message));
+    },
+    onStats: (stats) => ctx.stateManager.setLLMQueueStats(stats)
+  });
+  ctx.llmQueue = llmQueue;
+
   await ensureStateDir(config.statePath);
   await stateManager.load();
+  ctx.stateManager.setLLMQueueStats(llmQueue.stats());
 
   if (!overrides.skipTwilioStartupCheck && config.notificationService === 'twilio') {
     await twilioStartupCheck(ctx);
@@ -529,14 +698,17 @@ export const startApp = async (overrides = {}) => {
         await new Promise((resolve) => server.close(resolve));
       }
     },
-    pollNow: () => pollGmail(ctx),
+    pollNow: async () => {
+      await pollGmail(ctx);
+      await ctx.llmQueue.whenIdle();
+    },
     getStatus: () => buildStatusSnapshot(ctx)
   };
 };
 
 if (process.env.NO_AUTO_START !== '1' && process.env.NODE_ENV !== 'test') {
   startApp().catch((err) => {
-    log('Fatal error', err);
+    logEvent('FATAL', { error: err.message });
     process.exit(1);
   });
 }
