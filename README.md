@@ -271,3 +271,6 @@ Edit `data/system_prompt.txt` to customize:
   - Shorthand: `REAL=GLPT npm test` sets `TEST_REAL_GMAIL/LLM/PUSHOVER/TWILIO` based on letters (any order, case-insensitive).
 - LLM debug logging during real-LLM test: add `TEST_LLM_DEBUG=1 npm test` to print request IDs, latency, tokens, and raw content from the local LLM in the real-LLM scenario.
 - Real LLM judgment checks (skipped unless `TEST_REAL_LLM=1`): per-email tests named after the subject, using controlled urgent/non-urgent mocks from `test/fixtures/llm_judgment_cases.json` + raw `.eml` files.
+
+### License
+This project is licensed under the [MIT License](LICENSE).
