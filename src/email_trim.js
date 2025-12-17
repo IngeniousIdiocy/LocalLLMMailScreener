@@ -182,13 +182,7 @@ export const trimEmailForLLM = (email, opts = {}) => {
     body_text: trimmedBody,
     attachments,
     stats,
-    // Phishing detection data
-    url_analysis: {
-      extracted_urls: urlAnalysis.urls,
-      has_mismatched_urls: urlAnalysis.has_mismatched_urls,
-      has_suspicious_domains: urlAnalysis.has_suspicious_domains,
-      warning: urlAnalysis.summary
-    },
+    url_analysis: urlAnalysis,
     sender_analysis: senderAnalysis
   };
 

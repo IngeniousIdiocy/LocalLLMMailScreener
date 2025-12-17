@@ -90,92 +90,72 @@ describe('checkIpBasedUrl', () => {
 describe('extractUrls', () => {
   test('returns empty result for null input', () => {
     const result = extractUrls(null);
-    assert.deepStrictEqual(result.urls, []);
+    assert.strictEqual(result.count, 0);
+    assert.deepStrictEqual(result.unique_domains, []);
     assert.strictEqual(result.has_mismatched_urls, false);
-    assert.strictEqual(result.has_suspicious_domains, false);
+    assert.strictEqual(result.has_ip_based_urls, false);
   });
 
-  test('extracts plaintext URLs', () => {
+  test('extracts plaintext URLs and returns domain', () => {
     const body = 'Check out https://example.com/page for more info.';
     const result = extractUrls(body);
-    assert.strictEqual(result.urls.length, 1);
-    assert.strictEqual(result.urls[0].url, 'https://example.com/page');
-    assert.strictEqual(result.urls[0].root_domain, 'example.com');
-    assert.strictEqual(result.urls[0].source, 'plaintext');
+    assert.strictEqual(result.count, 1);
+    assert.ok(result.unique_domains.includes('example.com'));
   });
 
   test('extracts HTML anchor with matching display/href', () => {
     const body = '<a href="https://paypal.com/login">https://paypal.com/login</a>';
     const result = extractUrls(body);
-    assert.strictEqual(result.urls.length, 1);
-    assert.strictEqual(result.urls[0].root_domain, 'paypal.com');
-    assert.strictEqual(result.urls[0].mismatch, false);
+    assert.strictEqual(result.count, 1);
+    assert.ok(result.unique_domains.includes('paypal.com'));
+    assert.strictEqual(result.has_mismatched_urls, false);
   });
 
   test('detects mismatched display text vs href', () => {
     const body = '<a href="https://paypal.scammer.ru/steal">https://paypal.com/secure</a>';
     const result = extractUrls(body);
-    assert.strictEqual(result.urls.length, 1);
-    assert.strictEqual(result.urls[0].url, 'https://paypal.scammer.ru/steal');
-    assert.strictEqual(result.urls[0].root_domain, 'scammer.ru');
-    assert.strictEqual(result.urls[0].display_domain, 'paypal.com');
-    assert.strictEqual(result.urls[0].mismatch, true);
+    assert.strictEqual(result.count, 1);
+    assert.ok(result.unique_domains.includes('scammer.ru'));
     assert.strictEqual(result.has_mismatched_urls, true);
   });
 
-  test('detects suspicious domains impersonating brands', () => {
-    const body = 'Visit https://google-security-alert.com/verify to secure your account.';
-    const result = extractUrls(body);
-    assert.strictEqual(result.urls.length, 1);
-    assert.strictEqual(result.urls[0].suspicious, true);
-    assert.ok(result.urls[0].suspicious_reason.includes('google'));
-    assert.strictEqual(result.has_suspicious_domains, true);
-  });
-
-  test('does not flag legitimate domains as suspicious', () => {
-    const body = 'Log in at https://www.google.com/accounts';
-    const result = extractUrls(body);
-    assert.strictEqual(result.urls.length, 1);
-    assert.strictEqual(result.urls[0].suspicious, false);
-    assert.strictEqual(result.has_suspicious_domains, false);
-  });
-
-  test('generates warning summary for mismatched URLs', () => {
-    const body = '<a href="https://apple.id-verify.scamsite.ru/account">https://apple.com/verify</a>';
-    const result = extractUrls(body);
-    assert.ok(result.summary);
-    assert.ok(result.summary.includes('MISMATCH'));
-  });
-
-  test('handles multiple URLs with mixed results', () => {
+  test('handles multiple URLs and returns unique domains', () => {
     const body = `
       <a href="https://google.com/search">Google Search</a>
       <a href="https://paypal.evil.net/steal">https://paypal.com/secure</a>
       Visit https://example.com for more.
     `;
     const result = extractUrls(body);
-    assert.ok(result.urls.length >= 2);
+    assert.ok(result.count >= 2);
+    assert.ok(result.unique_domains.includes('google.com'));
+    assert.ok(result.unique_domains.includes('evil.net'));
     assert.strictEqual(result.has_mismatched_urls, true);
   });
 
-  test('deduplicates URLs preferring HTML anchor over plaintext', () => {
+  test('deduplicates URLs by href', () => {
     const body = `
       <a href="https://example.com/page">Click here</a>
       Also see https://example.com/page for details.
     `;
     const result = extractUrls(body);
-    // Should dedupe to just one entry, preferring the HTML anchor
-    const exampleUrls = result.urls.filter(u => u.url === 'https://example.com/page');
-    assert.strictEqual(exampleUrls.length, 1);
-    assert.strictEqual(exampleUrls[0].source, 'html_anchor');
+    // Should dedupe to just one entry
+    assert.strictEqual(result.count, 1);
+    assert.strictEqual(result.unique_domains.length, 1);
+    assert.ok(result.unique_domains.includes('example.com'));
   });
 
   test('handles anchor tags with non-URL display text', () => {
     const body = '<a href="https://legitimate-bank.com/login">Click here to login</a>';
     const result = extractUrls(body);
-    assert.strictEqual(result.urls.length, 1);
-    assert.strictEqual(result.urls[0].display_text, 'Click here to login');
-    assert.strictEqual(result.urls[0].mismatch, false); // display text doesn't look like a URL
+    assert.strictEqual(result.count, 1);
+    assert.strictEqual(result.has_mismatched_urls, false); // display text doesn't look like a URL
+  });
+
+  test('detects IP-based URLs and includes IP in domains', () => {
+    const body = 'Click here: http://192.168.1.100/login.php';
+    const result = extractUrls(body);
+    assert.strictEqual(result.has_ip_based_urls, true);
+    assert.ok(result.unique_domains.includes('192.168.1.100'));
   });
 });
 
@@ -221,36 +201,14 @@ describe('URL extraction from phishing email fixture', () => {
 
   test('extracts URLs from phishing email', () => {
     const result = extractUrls(phishingEmail);
-    assert.ok(result.urls.length >= 2, 'Should find at least 2 URLs in phishing email');
+    assert.ok(result.count >= 2, 'Should find at least 2 URLs in phishing email');
   });
 
   test('detects mismatched URLs in phishing email', () => {
     const result = extractUrls(phishingEmail);
     assert.strictEqual(result.has_mismatched_urls, true, 'Should detect mismatched URLs');
-    
-    // Find the specific mismatch: display shows apple.com but links to scamsite.ru
-    const mismatchedUrl = result.urls.find(u => u.mismatch);
-    assert.ok(mismatchedUrl, 'Should have at least one mismatched URL');
-    assert.strictEqual(mismatchedUrl.root_domain, 'scamsite.ru', 'Actual domain should be scamsite.ru');
-    assert.strictEqual(mismatchedUrl.display_domain, 'apple.com', 'Display domain should be apple.com');
-  });
-
-  test('detects suspicious domains in phishing email', () => {
-    const result = extractUrls(phishingEmail);
-    assert.strictEqual(result.has_suspicious_domains, true, 'Should detect suspicious domains');
-    
-    // Should flag icloud-support.fraudsters.net as suspicious (contains "icloud")
-    const suspiciousUrl = result.urls.find(u => u.suspicious);
-    assert.ok(suspiciousUrl, 'Should have at least one suspicious URL');
-  });
-
-  test('generates warning summary for phishing email', () => {
-    const result = extractUrls(phishingEmail);
-    assert.ok(result.summary, 'Should generate a warning summary');
-    assert.ok(
-      result.summary.includes('MISMATCH') || result.summary.includes('SUSPICIOUS'),
-      'Summary should mention mismatch or suspicious'
-    );
+    // The phishing email has apple.com display text linking to scamsite.ru
+    assert.ok(result.unique_domains.includes('scamsite.ru'), 'Should include scamsite.ru in domains');
   });
 
   test('analyzes phishing sender correctly', () => {
@@ -272,7 +230,7 @@ describe('URL extraction from legitimate bank email fixture', () => {
 
   test('extracts URLs from legitimate email', () => {
     const result = extractUrls(legitEmail);
-    assert.ok(result.urls.length >= 1, 'Should find at least 1 URL in legitimate email');
+    assert.ok(result.count >= 1, 'Should find at least 1 URL in legitimate email');
   });
 
   test('does NOT flag mismatched URLs in legitimate email', () => {
@@ -280,24 +238,13 @@ describe('URL extraction from legitimate bank email fixture', () => {
     assert.strictEqual(result.has_mismatched_urls, false, 'Should NOT detect mismatched URLs in legit email');
   });
 
-  test('does NOT flag suspicious domains in legitimate email', () => {
-    const result = extractUrls(legitEmail);
-    assert.strictEqual(result.has_suspicious_domains, false, 'Should NOT flag wellsfargo.com as suspicious');
-  });
-
   test('all URLs point to wellsfargo.com', () => {
     const result = extractUrls(legitEmail);
-    const wfUrls = result.urls.filter(u => u.root_domain === 'wellsfargo.com');
-    assert.strictEqual(
-      wfUrls.length,
-      result.urls.length,
-      'All URLs should point to wellsfargo.com'
+    // All domains should be wellsfargo.com
+    assert.ok(
+      result.unique_domains.every(d => d === 'wellsfargo.com'),
+      'All domains should be wellsfargo.com'
     );
-  });
-
-  test('does NOT generate warning summary for legitimate email', () => {
-    const result = extractUrls(legitEmail);
-    assert.strictEqual(result.summary, null, 'Should NOT generate warning summary for legit email');
   });
 
   test('analyzes legitimate sender correctly', () => {
@@ -315,36 +262,21 @@ describe('URL extraction from IP-based phishing email fixture', () => {
 
   test('extracts URLs from IP-based phishing email', () => {
     const result = extractUrls(ipPhishingEmail);
-    assert.ok(result.urls.length >= 3, 'Should find at least 3 URLs in IP phishing email');
+    assert.ok(result.count >= 3, 'Should find at least 3 URLs in IP phishing email');
   });
 
-  test('detects IP-based URLs as suspicious', () => {
+  test('detects IP-based URLs', () => {
     const result = extractUrls(ipPhishingEmail);
     assert.strictEqual(result.has_ip_based_urls, true, 'Should detect IP-based URLs');
-    assert.strictEqual(result.has_suspicious_domains, true, 'IP URLs should be flagged as suspicious');
   });
 
-  test('identifies IPv6 URLs', () => {
+  test('includes IP addresses in unique_domains', () => {
     const result = extractUrls(ipPhishingEmail);
-    const ipv6Urls = result.urls.filter(u => u.ip_type === 'ipv6');
-    assert.ok(ipv6Urls.length >= 2, 'Should find at least 2 IPv6 URLs');
-    assert.ok(ipv6Urls.every(u => u.is_ip_based), 'All IPv6 URLs should be flagged as IP-based');
-  });
-
-  test('identifies IPv4 URLs', () => {
-    const result = extractUrls(ipPhishingEmail);
-    const ipv4Urls = result.urls.filter(u => u.ip_type === 'ipv4');
-    assert.ok(ipv4Urls.length >= 1, 'Should find at least 1 IPv4 URL');
-    assert.ok(ipv4Urls.every(u => u.is_ip_based), 'All IPv4 URLs should be flagged as IP-based');
-  });
-
-  test('generates CRITICAL warning for IP-based URLs', () => {
-    const result = extractUrls(ipPhishingEmail);
-    assert.ok(result.summary, 'Should generate a warning summary');
-    assert.ok(
-      result.summary.includes('CRITICAL') && result.summary.includes('IP-BASED'),
-      'Summary should include CRITICAL IP-BASED warning'
+    // Should include the IP addresses in the domains list for LLM to see
+    const hasIpDomain = result.unique_domains.some(d => 
+      /^\d+\.\d+\.\d+\.\d+$/.test(d) || d.startsWith('[')
     );
+    assert.ok(hasIpDomain, 'Should include IP addresses in unique_domains');
   });
 
   test('sender domain does not match claimed brand (for LLM to evaluate)', () => {
@@ -358,4 +290,3 @@ describe('URL extraction from IP-based phishing email fixture', () => {
     // The LLM should recognize this mismatch between claimed brand and sender
   });
 });
-
