@@ -181,7 +181,7 @@ Node.js (ESM) service that polls Gmail, sends each new email to a local OpenAI-c
 │     │                         │       │  │  (skipped if DRY_RUN)     │  │    │
 │     │                         │       │  └─────────────┬─────────────┘  │    │
 │     │                         │       │                │                │    │
-│     │                         │       │                ▼                │    │                                                                          
+│     │                         │       │                ▼                │    │ 
 │     │                         │       │  ┌───────────────────────────┐  │    │
 │     │                         │       │  │    NOTIFICATION SENT      │  │    │
 │     │                         │       │  │                           │  │    │
