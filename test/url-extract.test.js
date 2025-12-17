@@ -6,7 +6,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { extractUrls, extractRootDomain, analyzeSender } from '../src/url_extract.js';
+import { extractUrls, extractRootDomain, analyzeSender, checkIpBasedUrl } from '../src/url_extract.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const loadFixture = (filename) => fs.readFileSync(path.join(__dirname, 'fixtures', filename), 'utf8');
@@ -38,6 +38,52 @@ describe('extractRootDomain', () => {
 
   test('handles deep subdomains', () => {
     assert.strictEqual(extractRootDomain('https://a.b.c.d.example.com/path'), 'example.com');
+  });
+});
+
+describe('checkIpBasedUrl', () => {
+  test('detects IPv4 addresses', () => {
+    const result = checkIpBasedUrl('http://192.168.1.1/path');
+    assert.strictEqual(result.is_ip_based, true);
+    assert.strictEqual(result.ip_type, 'ipv4');
+  });
+
+  test('detects IPv6 addresses in brackets', () => {
+    const result = checkIpBasedUrl('http://[0000:0000:0000:0000:0000:ffff:1769:2bd4]/path');
+    assert.strictEqual(result.is_ip_based, true);
+    assert.strictEqual(result.ip_type, 'ipv6');
+  });
+
+  test('detects short IPv6 addresses', () => {
+    const result = checkIpBasedUrl('http://[::1]/path');
+    assert.strictEqual(result.is_ip_based, true);
+    assert.strictEqual(result.ip_type, 'ipv6');
+  });
+
+  test('detects decimal IP addresses (converted to IPv4 by URL parser)', () => {
+    // 3232235777 = 192.168.1.1 - Node's URL parser converts this to IPv4
+    const result = checkIpBasedUrl('http://3232235777/path');
+    assert.strictEqual(result.is_ip_based, true);
+    // Node.js URL parser normalizes decimal IPs to IPv4 format
+    assert.strictEqual(result.ip_type, 'ipv4');
+  });
+
+  test('does NOT flag normal domains', () => {
+    const result = checkIpBasedUrl('https://www.google.com/path');
+    assert.strictEqual(result.is_ip_based, false);
+    assert.strictEqual(result.ip_type, null);
+  });
+
+  test('does NOT flag domains that look like IPs', () => {
+    // 192.com is a domain, not an IP
+    const result = checkIpBasedUrl('https://192.com/path');
+    assert.strictEqual(result.is_ip_based, false);
+  });
+
+  test('handles invalid URLs gracefully', () => {
+    const result = checkIpBasedUrl('not-a-url');
+    assert.strictEqual(result.is_ip_based, false);
+    assert.strictEqual(result.ip_type, null);
   });
 });
 
@@ -261,6 +307,55 @@ describe('URL extraction from legitimate bank email fixture', () => {
     
     const result = analyzeSender(fromMatch[1]);
     assert.strictEqual(result.root_domain, 'wellsfargo.com', 'Sender root domain should be wellsfargo.com');
+  });
+});
+
+describe('URL extraction from IP-based phishing email fixture', () => {
+  const ipPhishingEmail = loadFixture('raw/phishing_ip_based.eml');
+
+  test('extracts URLs from IP-based phishing email', () => {
+    const result = extractUrls(ipPhishingEmail);
+    assert.ok(result.urls.length >= 3, 'Should find at least 3 URLs in IP phishing email');
+  });
+
+  test('detects IP-based URLs as suspicious', () => {
+    const result = extractUrls(ipPhishingEmail);
+    assert.strictEqual(result.has_ip_based_urls, true, 'Should detect IP-based URLs');
+    assert.strictEqual(result.has_suspicious_domains, true, 'IP URLs should be flagged as suspicious');
+  });
+
+  test('identifies IPv6 URLs', () => {
+    const result = extractUrls(ipPhishingEmail);
+    const ipv6Urls = result.urls.filter(u => u.ip_type === 'ipv6');
+    assert.ok(ipv6Urls.length >= 2, 'Should find at least 2 IPv6 URLs');
+    assert.ok(ipv6Urls.every(u => u.is_ip_based), 'All IPv6 URLs should be flagged as IP-based');
+  });
+
+  test('identifies IPv4 URLs', () => {
+    const result = extractUrls(ipPhishingEmail);
+    const ipv4Urls = result.urls.filter(u => u.ip_type === 'ipv4');
+    assert.ok(ipv4Urls.length >= 1, 'Should find at least 1 IPv4 URL');
+    assert.ok(ipv4Urls.every(u => u.is_ip_based), 'All IPv4 URLs should be flagged as IP-based');
+  });
+
+  test('generates CRITICAL warning for IP-based URLs', () => {
+    const result = extractUrls(ipPhishingEmail);
+    assert.ok(result.summary, 'Should generate a warning summary');
+    assert.ok(
+      result.summary.includes('CRITICAL') && result.summary.includes('IP-BASED'),
+      'Summary should include CRITICAL IP-BASED warning'
+    );
+  });
+
+  test('sender domain does not match claimed brand (for LLM to evaluate)', () => {
+    // Extract From header from the email
+    const fromMatch = ipPhishingEmail.match(/^From:\s*(.+)$/m);
+    assert.ok(fromMatch, 'Should find From header');
+    
+    const result = analyzeSender(fromMatch[1]);
+    // Email claims to be "Cloud Storage" but sender is semaslim.net
+    assert.strictEqual(result.root_domain, 'semaslim.net', 'Sender should be semaslim.net, not apple.com or icloud.com');
+    // The LLM should recognize this mismatch between claimed brand and sender
   });
 });
 

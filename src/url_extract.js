@@ -5,6 +5,49 @@
  */
 
 /**
+ * Check if a URL uses an IP address instead of a domain name.
+ * Legitimate services NEVER send links to raw IPs - this is a strong phishing indicator.
+ * @param {string} url - The URL to check
+ * @returns {Object} { is_ip_based: boolean, ip_type: string|null }
+ */
+export const checkIpBasedUrl = (url) => {
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname;
+    
+    // IPv6 in brackets: [::1] or [0000:0000:...] or [::ffff:192.168.1.1]
+    if (hostname.startsWith('[') && hostname.endsWith(']')) {
+      return { is_ip_based: true, ip_type: 'ipv6' };
+    }
+    
+    // IPv4: four octets like 192.168.1.1
+    const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
+    if (ipv4Regex.test(hostname)) {
+      // Validate each octet is 0-255
+      const octets = hostname.split('.').map(Number);
+      if (octets.every(n => n >= 0 && n <= 255)) {
+        return { is_ip_based: true, ip_type: 'ipv4' };
+      }
+    }
+    
+    // Decimal IP: single large integer like 3232235777 (= 192.168.1.1)
+    // These are rare but used by some phishing attacks
+    const decimalIpRegex = /^\d{8,10}$/;
+    if (decimalIpRegex.test(hostname)) {
+      const num = parseInt(hostname, 10);
+      // Valid IPv4 range: 0 to 4294967295 (2^32 - 1)
+      if (num >= 0 && num <= 4294967295) {
+        return { is_ip_based: true, ip_type: 'decimal_ip' };
+      }
+    }
+    
+    return { is_ip_based: false, ip_type: null };
+  } catch {
+    return { is_ip_based: false, ip_type: null };
+  }
+};
+
+/**
  * Extract the root domain from a URL (e.g., "mail.google.com" -> "google.com")
  * Handles subdomains and common TLDs.
  */
@@ -237,22 +280,47 @@ export const extractUrls = (bodyText) => {
       fullHostname = new URL(entry.url).hostname;
     } catch { /* ignore */ }
     
+    // Check for IP-based URLs (major red flag)
+    const ipCheck = checkIpBasedUrl(entry.url);
+    
     const suspiciousCheck = checkSuspiciousDomain(entry.root_domain, fullHostname);
+    
+    // IP-based URLs are always suspicious
+    let suspicious = suspiciousCheck.suspicious || ipCheck.is_ip_based;
+    let suspiciousReason = suspiciousCheck.reason || null;
+    
+    if (ipCheck.is_ip_based) {
+      suspiciousReason = `URL uses raw ${ipCheck.ip_type} address instead of domain - legitimate services never do this`;
+    }
+    
     return {
       ...entry,
-      suspicious: suspiciousCheck.suspicious,
-      suspicious_reason: suspiciousCheck.reason || null
+      is_ip_based: ipCheck.is_ip_based,
+      ip_type: ipCheck.ip_type,
+      suspicious,
+      suspicious_reason: suspiciousReason
     };
   });
   
   // Compute summary flags
   const hasMismatchedUrls = analyzedUrls.some((u) => u.mismatch);
   const hasSuspiciousDomains = analyzedUrls.some((u) => u.suspicious);
+  const hasIpBasedUrls = analyzedUrls.some((u) => u.is_ip_based);
   
   // Build human-readable summary for the LLM
   let summary = null;
-  if (hasMismatchedUrls || hasSuspiciousDomains) {
+  if (hasMismatchedUrls || hasSuspiciousDomains || hasIpBasedUrls) {
     const issues = [];
+    
+    // IP-based URLs are the most critical red flag
+    const ipBased = analyzedUrls.filter((u) => u.is_ip_based);
+    if (ipBased.length > 0) {
+      const examples = ipBased
+        .slice(0, 3)
+        .map((u) => `${u.url.slice(0, 60)}... (${u.ip_type})`)
+        .join('; ');
+      issues.push(`CRITICAL: IP-BASED URLs DETECTED (phishing red flag): ${examples}`);
+    }
     
     const mismatched = analyzedUrls.filter((u) => u.mismatch);
     if (mismatched.length > 0) {
@@ -263,7 +331,7 @@ export const extractUrls = (bodyText) => {
       issues.push(`URL MISMATCH DETECTED: ${examples}`);
     }
     
-    const suspicious = analyzedUrls.filter((u) => u.suspicious);
+    const suspicious = analyzedUrls.filter((u) => u.suspicious && !u.is_ip_based);
     if (suspicious.length > 0) {
       const examples = suspicious
         .slice(0, 3)
@@ -279,6 +347,7 @@ export const extractUrls = (bodyText) => {
     urls: analyzedUrls,
     has_mismatched_urls: hasMismatchedUrls,
     has_suspicious_domains: hasSuspiciousDomains,
+    has_ip_based_urls: hasIpBasedUrls,
     summary
   };
 };
@@ -325,5 +394,5 @@ export const analyzeSender = (fromHeader) => {
   return { email: null, display_name: fromHeader, domain: null, root_domain: null };
 };
 
-export default { extractUrls, extractRootDomain, analyzeSender };
+export default { extractUrls, extractRootDomain, analyzeSender, checkIpBasedUrl };
 

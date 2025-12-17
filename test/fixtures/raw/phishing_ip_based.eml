@@ -1,0 +1,37 @@
+From: Cloud Storage <cloud@semaslim.net>
+To: Mark <mark@example.com>
+Subject: DEADLINE ALERT: DEC 17, 2025 SYSTEM SHUTDOWN
+Date: Wed, 17 Dec 2025 09:13:00 -0000
+Message-ID: <phishing_ip_based@example.com>
+Content-Type: text/html; charset="UTF-8"
+
+<html>
+<body>
+<p>Dear user,</p>
+
+<p>We attempted to renew your Cloud+ subscription, but your payment method has expired. As a result, your personal data is now at risk of being <strong>permanently removed</strong> from cloud.</p>
+
+<p><strong>What you could lose:</strong></p>
+<ul>
+<li>Photos and videos stored in Cloud Photos</li>
+<li>Contacts, calendars, and reminders</li>
+<li>Device backups (iPhone, iPad, Mac)</li>
+</ul>
+
+<p><strong>Final Reminder:</strong> Your data will be deleted if no action is taken by <strong>Wednesday, Dec 17 2025</strong>.</p>
+
+<p>To prevent data loss, please update your payment information immediately:</p>
+
+<p><a href="http://[0000:0000:0000:0000:0000:ffff:1769:2bd4]/verify?id=abc123">Update Payment & Secure My Data</a></p>
+
+<p>Or visit: <a href="http://192.168.1.100/cloud-verify/login.php">http://192.168.1.100/cloud-verify/login.php</a></p>
+
+<p>Thank you for choosing Cloud.<br>
+— <strong>The Cloud Support Team</strong></p>
+
+<p style="font-size:11px;color:#888;">
+<a href="http://[0000:0000:0000:0000:0000:ffff:1769:2bd4]/unsubscribe">Unsubscribe</a>
+</p>
+</body>
+</html>
+

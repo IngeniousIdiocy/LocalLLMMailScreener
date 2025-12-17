@@ -22,5 +22,11 @@
     "raw_file": "raw/legit_urgent_bank.eml",
     "expect_notify": true,
     "description": "Legitimate: Bank fraud alert with real wellsfargo.com URLs - urgent and should notify"
+  },
+  {
+    "id": "phishing_ip_based",
+    "raw_file": "raw/phishing_ip_based.eml",
+    "expect_notify": false,
+    "description": "Phishing: Cloud storage scam using raw IP addresses in URLs (IPv6 and IPv4) - no legitimate company does this"
   }
 ]

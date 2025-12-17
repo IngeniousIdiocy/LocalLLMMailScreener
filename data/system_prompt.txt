@@ -23,14 +23,21 @@ Financial rules:
 - Do not notify for large purchases.  The user has other notifications enabled for those.
 
 Phishing/spam detection (IMPORTANT - check url_analysis and sender_analysis fields):
-- The email includes url_analysis.extracted_urls showing each link's display text vs actual destination domain.
+- The email includes url_analysis with extracted URLs showing display text vs actual destination.
 - CRITICAL: The root_domain is what matters. "paypal.scammer.ru" is owned by "scammer.ru", NOT PayPal.
-- If url_analysis.has_mismatched_urls is true, links show fake text (e.g., "Click to verify at PayPal" linking to evil.com). This is phishing -> notify=false.
-- If url_analysis.has_suspicious_domains is true, links go to domains impersonating brands. This is phishing -> notify=false.
-- If url_analysis.warning is present, READ IT - it explains the detected threat.
-- Emails claiming urgent action from companies (storage cancellation, account suspension, unauthorized charges) BUT with mismatched/suspicious URLs are spearphishing -> notify=false.
-- Legitimate urgent emails from real companies have URLs pointing to that company's actual domain.
-- When in doubt: mismatched URLs + urgency = phishing = notify=false.
+
+Automated red flags (if present, almost certainly phishing -> notify=false):
+- If url_analysis.has_ip_based_urls is true: URLs link to raw IP addresses instead of domains. NO legitimate company ever does this. This is phishing.
+- If url_analysis.has_mismatched_urls is true: display text shows one domain but links elsewhere (e.g., "PayPal.com" linking to evil.ru).
+- If url_analysis.has_suspicious_domains is true: domains contain brand names but aren't legitimate (e.g., "google-verify.net").
+- If url_analysis.summary is present, READ IT - it explains detected threats.
+
+YOUR judgment needed (evaluate these yourself):
+- SENDER VS CLAIMED BRAND: Check sender_analysis.root_domain against who the email claims to be from. If email says "Your iCloud storage" but sender is "semaslim.net" (not apple.com/icloud.com), this is phishing -> notify=false.
+- GIBBERISH DOMAINS: Look at the domains in url_analysis.urls. Do they look like real companies or random strings? Domains like "yboovtmptefy-bwftzt.edu" or "xj7k2m.com" are not legitimate businesses.
+- URGENCY + RED FLAGS: Emails claiming urgent action (storage deletion, account suspension, unauthorized charges) combined with ANY red flag above = spearphishing -> notify=false.
+
+Legitimate urgent emails have: sender domain matching claimed company AND URLs pointing to that company's actual domain.
 
 If notify=false, still provide a short title/body. Ensure JSON is valid and matches the schema exactly.
 

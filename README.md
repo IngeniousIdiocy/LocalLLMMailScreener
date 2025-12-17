@@ -423,13 +423,23 @@ The system includes automatic URL extraction and analysis to help the LLM identi
    - `paypal.scammer.ru` → `scammer.ru` (NOT PayPal!)
    - Handles multi-part TLDs like `.co.uk`, `.com.au`
 
-3. **Mismatch Detection**: Flags when display text shows one domain but link goes elsewhere:
+3. **IP-Based URL Detection** (CRITICAL): Flags URLs that use raw IP addresses instead of domains:
+   - IPv6: `http://[0000:0000:0000:0000:0000:ffff:1769:2bd4]/verify`
+   - IPv4: `http://192.168.1.100/login.php`
+   - Decimal IPs: `http://3232235777/` (obscured IPv4)
+   - **No legitimate company ever sends links to raw IP addresses** — this is an instant phishing indicator
+
+4. **Mismatch Detection**: Flags when display text shows one domain but link goes elsewhere:
    - Display: `https://apple.com/verify` → Href: `https://apple.id-verify.scamsite.ru`
    - This is a classic phishing technique
 
-4. **Suspicious Domain Detection**: Identifies domains that contain brand names but aren't legitimate:
+5. **Suspicious Domain Detection**: Identifies domains that contain brand names but aren't legitimate:
    - `google-security.com` (contains "google" but isn't google.com)
    - `paypal-verify.net` (contains "paypal" but isn't paypal.com)
+
+6. **LLM-Evaluated Checks** (system prompt instructs LLM to check these):
+   - **Sender vs Claimed Brand**: Does sender domain match who the email claims to be from?
+   - **Gibberish Domains**: Do the URLs point to random-looking domains like `yboovtmptefy.edu`?
 
 #### Data Provided to LLM
 
@@ -438,25 +448,27 @@ Each email sent to the LLM includes:
 ```json
 {
   "url_analysis": {
-    "extracted_urls": [
+    "urls": [
       {
-        "display_text": "https://apple.com/verify",
-        "url": "https://apple.id-verify.scamsite.ru/account",
-        "root_domain": "scamsite.ru",
-        "display_domain": "apple.com",
-        "mismatch": true,
-        "suspicious": false
+        "display_text": "Update Payment",
+        "url": "http://[0000:0000:0000:ffff:1769:2bd4]/verify",
+        "root_domain": "[::ffff:1769:2bd4]",
+        "is_ip_based": true,
+        "ip_type": "ipv6",
+        "suspicious": true,
+        "suspicious_reason": "URL uses raw ipv6 address instead of domain - legitimate services never do this"
       }
     ],
-    "has_mismatched_urls": true,
-    "has_suspicious_domains": false,
-    "warning": "URL MISMATCH DETECTED: \"https://apple.com/verify\" actually links to scamsite.ru"
+    "has_ip_based_urls": true,
+    "has_mismatched_urls": false,
+    "has_suspicious_domains": true,
+    "summary": "CRITICAL: IP-BASED URLs DETECTED (phishing red flag): http://[0000:0000:...]... (ipv6)"
   },
   "sender_analysis": {
-    "email": "support@apple-id-verification.scamsite.ru",
-    "display_name": "iCloud Support",
-    "domain": "apple-id-verification.scamsite.ru",
-    "root_domain": "scamsite.ru"
+    "email": "cloud@semaslim.net",
+    "display_name": "Cloud Storage",
+    "domain": "semaslim.net",
+    "root_domain": "semaslim.net"
   }
 }
 ```
@@ -465,17 +477,31 @@ Each email sent to the LLM includes:
 
 The system prompt (`data/system_prompt.txt`) includes rules for the LLM to use this data:
 
+**Automated red flags** (code detects these):
+- If `has_ip_based_urls` is true → instant phishing indicator → `notify: false`
 - If `has_mismatched_urls` is true → phishing → `notify: false`
 - If `has_suspicious_domains` is true → phishing → `notify: false`
-- Legitimate urgent emails (bank fraud alerts, etc.) have URLs pointing to the actual company domain
-- When in doubt: mismatched URLs + urgency = phishing = suppress
+
+**LLM judgment required**:
+- Sender domain vs claimed brand (e.g., `semaslim.net` claiming to be "Cloud Storage")
+- Gibberish/random domain names in URLs
+- Urgency combined with any red flags = spearphishing
+
+Legitimate urgent emails have URLs pointing to the actual company domain AND sender domain matches.
 
 #### Testing Phishing Detection
 
 The test suite includes real LLM judgment tests for phishing scenarios (run with `TEST_REAL_LLM=1`):
 
-- `phishing_fake_urgent.eml`: Fake iCloud storage warning with deceptive URLs → should NOT notify
-- `legit_urgent_bank.eml`: Real bank fraud alert with legitimate URLs → SHOULD notify
+- `phishing_fake_urgent.eml`: Fake iCloud storage warning with mismatched URLs (display shows apple.com, links to scamsite.ru) → should NOT notify
+- `phishing_ip_based.eml`: Cloud storage scam using raw IP addresses (IPv6 and IPv4) in URLs → should NOT notify
+- `legit_urgent_bank.eml`: Real bank fraud alert with legitimate wellsfargo.com URLs → SHOULD notify
+
+Unit tests for URL extraction (`npm test`) cover:
+- IP-based URL detection (IPv4, IPv6, decimal IPs)
+- Root domain extraction
+- Mismatch detection
+- Suspicious domain detection
 
 ---
 
