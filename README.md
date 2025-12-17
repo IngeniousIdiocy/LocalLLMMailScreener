@@ -337,14 +337,14 @@ TWILIO_TO=+0987654321
 
 **Optional tuning:**
 ```env
-PORT=3000                       # Dashboard port
+PORT=3000                           # Dashboard port
 LLM_BASE_URL=http://127.0.0.1:8080  # Local LLM endpoint
-LLM_MODEL=local-model           # Model identifier
-POLL_INTERVAL_MS=15000          # Gmail poll interval
-GMAIL_QUERY=newer_than:1d       # Gmail search filter
-MAX_SMS_CHARS=900               # Notification body limit
-MAX_EMAIL_BODY_CHARS=4000       # Email body sent to LLM
-DRY_RUN=false                   # Set true to skip actual notifications
+LLM_MODEL=local-model               # Model identifier
+POLL_INTERVAL_MS=15000              # Gmail poll interval
+GMAIL_QUERY=newer_than:1d           # Gmail search filter
+MAX_SMS_CHARS=900                   # Notification body limit
+MAX_EMAIL_BODY_CHARS=4000           # Email body sent to LLM
+DRY_RUN=false                       # Set true to skip actual notifications
 ```
 
 #### Running
