@@ -433,13 +433,10 @@ The system includes automatic URL extraction and analysis to help the LLM identi
    - Display: `https://apple.com/verify` → Href: `https://apple.id-verify.scamsite.ru`
    - This is a classic phishing technique
 
-5. **Suspicious Domain Detection**: Identifies domains that contain brand names but aren't legitimate:
-   - `google-security.com` (contains "google" but isn't google.com)
-   - `paypal-verify.net` (contains "paypal" but isn't paypal.com)
-
-6. **LLM-Evaluated Checks** (system prompt instructs LLM to check these):
+5. **LLM-Evaluated Checks** (system prompt instructs LLM to use the extracted data):
    - **Sender vs Claimed Brand**: Does sender domain match who the email claims to be from?
    - **Gibberish Domains**: Do the URLs point to random-looking domains like `yboovtmptefy.edu`?
+   - **Suspicious Domain Names**: Domains containing brand names but aren't legitimate (e.g., `google-security.com`, `paypal-verify.net`)
 
 #### Data Provided to LLM
 
@@ -448,21 +445,10 @@ Each email sent to the LLM includes:
 ```json
 {
   "url_analysis": {
-    "urls": [
-      {
-        "display_text": "Update Payment",
-        "url": "http://[0000:0000:0000:ffff:1769:2bd4]/verify",
-        "root_domain": "[::ffff:1769:2bd4]",
-        "is_ip_based": true,
-        "ip_type": "ipv6",
-        "suspicious": true,
-        "suspicious_reason": "URL uses raw ipv6 address instead of domain - legitimate services never do this"
-      }
-    ],
+    "count": 1,
+    "unique_domains": ["[::ffff:1769:2bd4]"],
     "has_ip_based_urls": true,
-    "has_mismatched_urls": false,
-    "has_suspicious_domains": true,
-    "summary": "CRITICAL: IP-BASED URLs DETECTED (phishing red flag): http://[0000:0000:...]... (ipv6)"
+    "has_mismatched_urls": false
   },
   "sender_analysis": {
     "email": "cloud@semaslim.net",
@@ -477,13 +463,13 @@ Each email sent to the LLM includes:
 
 The system prompt (`data/system_prompt.txt`) includes rules for the LLM to use this data:
 
-**Automated red flags** (code detects these):
-- If `has_ip_based_urls` is true → instant phishing indicator → `notify: false`
-- If `has_mismatched_urls` is true → phishing → `notify: false`
-- If `has_suspicious_domains` is true → phishing → `notify: false`
+**Automated red flags** (code detects, LLM instructed to treat as phishing → `notify: false`):
+- If `has_ip_based_urls` is true → URLs link to raw IP addresses (no legitimate company does this)
+- If `has_mismatched_urls` is true → display text shows one domain but links elsewhere
 
 **LLM judgment required**:
 - Sender domain vs claimed brand (e.g., `semaslim.net` claiming to be "Cloud Storage")
+- Suspicious domain names containing brand names (e.g., `google-security.com`)
 - Gibberish/random domain names in URLs
 - Urgency combined with any red flags = spearphishing
 
@@ -501,7 +487,6 @@ Unit tests for URL extraction (`npm test`) cover:
 - IP-based URL detection (IPv4, IPv6, decimal IPs)
 - Root domain extraction
 - Mismatch detection
-- Suspicious domain detection
 
 ---
 
