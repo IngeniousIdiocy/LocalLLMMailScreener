@@ -2,3 +2,7 @@ node_modules
 npm-cache
 data/state*.json
 .env
+
+# Prompt tuning personal data
+prompt-tuning/notified/
+prompt-tuning/notnotified/

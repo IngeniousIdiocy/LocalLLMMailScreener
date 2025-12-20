@@ -1,0 +1,15 @@
+{
+  "max_attempts": 3,
+  "model": "claude-sonnet-4-5-20241022",
+  "temperature": 0.3,
+  "stop_on_zero_errors": true,
+  "regression_threshold": 0.1,
+  "evaluation": {
+    "errors_only": false,
+    "max_fp": 10,
+    "max_tp": 10,
+    "max_tn": 10,
+    "max_fn": null
+  }
+}
+
