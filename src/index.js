@@ -872,6 +872,7 @@ const buildClaudePrompt = ({ cases = [], windowHours, filtersSummary }) => {
         `Reason: ${c.reason || '—'}`,
         `Confidence: ${c.confidence ?? 'n/a'}`,
         `Decided at: ${new Date(c.decided_at || 0).toISOString()}`,
+        `Gmail URL: ${c.gmail_link || 'n/a'}`,
         `Features: attachments=${attachments.length}, urls=${url.count || 0}, ip_urls=${url.has_ip_based_urls ? 'yes' : 'no'}, mismatched_urls=${url.has_mismatched_urls ? 'yes' : 'no'}, removed_sections=${(features.removed_sections || []).join('|')}`,
         `Body (trimmed): ${c.analysis?.body_text || ''}`
       ];
@@ -882,7 +883,11 @@ const buildClaudePrompt = ({ cases = [], windowHours, filtersSummary }) => {
 - borderline_cases: list of case numbers where notify=true is plausible, with a 1-2 line rationale
 - obvious_notify_true: any case numbers that clearly should be notify=true
 - patterns: concise patterns you see in refusals
-- next_rules: 2-4 precise prompt/rule tweaks to reduce false refusals without weakening phishing handling`;
+- next_rules: 2-4 precise prompt/rule tweaks to reduce false refusals without weakening phishing handling
+
+Formatting:
+- Respond in Markdown.
+- When you mention a case in borderline_cases or obvious_notify_true, make the case text a Markdown link to its Gmail URL if provided (e.g., [Case 2](https://mail.google.com/...)). If a URL is missing, leave the case text plain.`;
   return [header, filterLine, body, ask].filter(Boolean).join('\n\n');
 };
 
