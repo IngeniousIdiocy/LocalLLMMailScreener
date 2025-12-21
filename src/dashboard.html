@@ -652,6 +652,12 @@
   min-width: 220px;
 }
 
+.chart-range-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: 8px;
+}
+
 .chart-area {
   background: rgba(0,0,0,0.25);
   border: 1px solid var(--glass-border);
@@ -1068,6 +1074,8 @@
             </select>
             <button class="btn secondary small" id="run-reason-buckets">Bucket reasons with Claude</button>
             <span class="analyst-meta" id="reason-buckets-status"></span>
+            <button class="btn secondary small" id="chart-back" disabled>Back</button>
+            <span class="chart-range-label" id="chart-range-label"></span>
           </div>
         </div>
         <div class="chart-area" id="chart-area">
@@ -1118,6 +1126,8 @@
     const chartCanvas = document.getElementById('refusal-chart');
     const reasonBucketsBtn = document.getElementById('run-reason-buckets');
     const reasonBucketsStatus = document.getElementById('reason-buckets-status');
+    const chartBackBtn = document.getElementById('chart-back');
+    const chartRangeLabel = document.getElementById('chart-range-label');
     const modelMaxLabel = document.getElementById('model-max-label');
     const hoursInput = document.getElementById('hours-input');
     const daysInput = document.getElementById('days-input');
@@ -1187,16 +1197,33 @@
       }
     };
 
-  const renderChart = (type, data) => {
-    clearChart();
-    if (!chartCanvas || !data || !data.samples || !data.samples.length || type === 'none') {
-      if (chartArea) chartArea.classList.remove('active');
-      return;
-    }
-    if (chartArea) chartArea.classList.add('active');
-    const ctx = chartCanvas.getContext('2d');
+    const renderChart = (type, data) => {
+      clearChart();
+      if (!chartCanvas || !data || !data.samples || !data.samples.length || type === 'none') {
+        if (chartArea) chartArea.classList.remove('active');
+        chartDrillStack = [];
+        if (chartBackBtn) chartBackBtn.disabled = true;
+        if (chartRangeLabel) chartRangeLabel.textContent = '';
+        return;
+      }
+      if (chartArea) chartArea.classList.add('active');
+      const ctx = chartCanvas.getContext('2d');
 
-      const samples = data.samples || [];
+      const baseSamples = data.samples || [];
+      const activeRange = chartDrillStack.length
+        ? chartDrillStack[chartDrillStack.length - 1]
+        : { min: 0, max: 1 };
+      const samples = baseSamples.filter((s) => {
+        const c = s.confidence ?? 0;
+        return c >= activeRange.min && c <= activeRange.max + 1e-9;
+      });
+      if (chartBackBtn) chartBackBtn.disabled = chartDrillStack.length === 0;
+      if (chartRangeLabel) {
+        chartRangeLabel.textContent =
+          chartDrillStack.length === 0
+            ? 'Range: 0.00 - 1.00'
+            : `Range: ${activeRange.min.toFixed(2)} - ${activeRange.max.toFixed(2)}`;
+      }
       const reasonBuckets = data.reasonBuckets || [];
       const reasonAssignments = data.reasonAssignments || [];
       const idToSample = new Map();
@@ -1224,21 +1251,69 @@
       };
 
       if (type === 'confidence-hist') {
-        const bins = [0, 0.2, 0.4, 0.6, 0.8, 1];
-        const counts = Array(bins.length).fill(0);
-        samples.forEach((s) => {
-          const c = s.confidence ?? 0;
-          const idx = bins.findIndex((b, i) => c >= b && c < (bins[i + 1] ?? 1.01));
-          const bucket = idx >= 0 ? idx : bins.length - 1;
-          counts[bucket] += 1;
+        const rangeWidth = Math.max(0.0001, activeRange.max - activeRange.min);
+        const canDrillFurther = rangeWidth > MIN_BIN_WIDTH + 1e-9;
+
+        const buildBins = () => {
+          if (!canDrillFurther) return [{ min: activeRange.min, max: activeRange.max }];
+          if (rangeWidth <= MIN_BIN_WIDTH * 5 + 1e-9) {
+            const bins = [];
+            let cursor = activeRange.min;
+            while (cursor < activeRange.max - 1e-9) {
+              const next = Math.min(activeRange.max, Number((cursor + MIN_BIN_WIDTH).toFixed(4)));
+              bins.push({ min: cursor, max: next });
+              cursor = next;
+            }
+            return bins.length ? bins : [{ min: activeRange.min, max: activeRange.max }];
+          }
+          const binCount = 5;
+          const step = rangeWidth / binCount;
+          return Array.from({ length: binCount }, (_, i) => ({
+            min: activeRange.min + step * i,
+            max: i === binCount - 1 ? activeRange.max : activeRange.min + step * (i + 1)
+          }));
+        };
+
+        const binRanges = buildBins();
+        const counts = binRanges.map((r, idx) => {
+          const isLast = idx === binRanges.length - 1;
+          return samples.filter((s) => {
+            const c = s.confidence ?? 0;
+            return c >= r.min && (isLast ? c <= r.max + 1e-9 : c < r.max);
+          }).length;
         });
+        if (!counts.some((c) => c > 0)) {
+          if (chartBackBtn) chartBackBtn.disabled = chartDrillStack.length === 0;
+          return;
+        }
+        const labels = binRanges.map((r, idx) => {
+          const isLast = idx === binRanges.length - 1;
+          const start = r.min.toFixed(2);
+          const end = r.max.toFixed(2);
+          return `${isLast ? '[' : '['}${start}, ${end}${isLast ? ']' : ')'}`;
+        });
+
         chartInstance = new Chart(ctx, {
           type: 'bar',
           data: {
-            labels: ['0-0.2', '0.2-0.4', '0.4-0.6', '0.6-0.8', '0.8-1.0'],
-            datasets: [{ label: 'Refusals', data: counts.slice(0, 5), backgroundColor: '#41d6ff88', borderColor: '#41d6ff' }]
+            labels,
+            datasets: [{ label: 'Refusals', data: counts, backgroundColor: '#41d6ff88', borderColor: '#41d6ff' }]
           },
-          options: { ...commonOpts, plugins: { ...commonOpts.plugins, legend: { display: false } } }
+          options: {
+            ...commonOpts,
+            plugins: { ...commonOpts.plugins, legend: { display: false } },
+            onClick: (_evt, elements) => {
+              if (!elements || !elements.length) return;
+              if (!canDrillFurther) return;
+              const idx = elements[0].index;
+              const selected = binRanges[idx];
+              if (!selected) return;
+              // Stop if bin width would be <= MIN_BIN_WIDTH
+              if (selected.max - selected.min <= MIN_BIN_WIDTH + 1e-9) return;
+              chartDrillStack.push(selected);
+              renderChart(type, data);
+            }
+          }
         });
         return;
       }
@@ -1264,7 +1339,7 @@
           label,
           avg: vals.reduce((a, b) => a + b, 0) / vals.length,
           count: vals.length
-        })).sort((a, b) => b.count - a.count).slice(0, 7);
+        })).sort((a, b) => b.count - a.count).slice(0, useClaude ? 12 : 7);
         chartInstance = new Chart(ctx, {
           type: 'bar',
           data: {
@@ -1305,8 +1380,8 @@
       if (type === 'reason-trend') {
         const useClaude = reasonBuckets.length && reasonAssignments.length;
         const topReasons = useClaude
-          ? reasonBuckets.map((b) => b.name).slice(0, 4)
-          : (data.top_reasons || []).slice(0, 3).map((r) => r.label);
+          ? reasonBuckets.map((b) => b.name)
+          : (data.top_reasons || []).slice(0, 5).map((r) => r.label);
         const buckets = new Map();
         const addPoint = (id, reasonLabel) => {
           const sample = idToSample.get(id);
@@ -1331,8 +1406,8 @@
         const datasets = topReasons.map((r, idx) => ({
           label: r,
           data: labels.map((l) => buckets.get(l)?.[r] || 0),
-          borderColor: `hsl(${idx * 60 + 30}, 80%, 60%)`,
-          backgroundColor: `hsla(${idx * 60 + 30}, 80%, 60%, 0.2)`,
+          borderColor: `hsl(${idx * 40 + 20}, 75%, 60%)`,
+          backgroundColor: `hsla(${idx * 40 + 20}, 75%, 60%, 0.2)`,
           fill: true,
           tension: 0.2
         }));
@@ -1541,6 +1616,8 @@
 const analystState = { enabled: false, view: 'rendered', cfg: {} };
     let chartInstance = null;
     let chartDataCache = null;
+    let chartDrillStack = [];
+    const MIN_BIN_WIDTH = 0.01;
 
     const updateWindowLabel = () => {
       const hours = Number(hoursInput.value) || 0;
@@ -1666,6 +1743,9 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
       analystStatus.textContent = '';
       analystStatus.style.color = 'var(--muted)';
       updateWindowLabel();
+      chartDrillStack = [];
+      if (chartBackBtn) chartBackBtn.disabled = true;
+      if (chartRangeLabel) chartRangeLabel.textContent = '';
       try {
         const params = buildFilterParams();
         const res = await fetch(`/api/analytics/refusals?${params.toString()}`);
@@ -1778,7 +1858,13 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
 
       chartSelect?.addEventListener('change', (e) => {
         const val = e.target.value;
+        chartDrillStack = [];
         renderChart(val, chartDataCache);
+      });
+
+      chartBackBtn?.addEventListener('click', () => {
+        chartDrillStack.pop();
+        renderChart(chartSelect?.value || 'none', chartDataCache);
       });
 
       document.querySelectorAll('[data-step-hours]').forEach((btn) => {
@@ -1786,6 +1872,9 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
           const step = Number(btn.getAttribute('data-step-hours')) || 0;
           hoursInput.value = Math.max(1, Math.min((Number(hoursInput.value) || 0) + step, 24 * 60));
           updateWindowLabel();
+          chartDrillStack = [];
+          if (chartBackBtn) chartBackBtn.disabled = true;
+          if (chartRangeLabel) chartRangeLabel.textContent = '';
         });
       });
 
@@ -1794,6 +1883,9 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
           const step = Number(btn.getAttribute('data-step-days')) || 0;
           daysInput.value = Math.max(0, Math.min((Number(daysInput.value) || 0) + step, 60));
           updateWindowLabel();
+          chartDrillStack = [];
+          if (chartBackBtn) chartBackBtn.disabled = true;
+          if (chartRangeLabel) chartRangeLabel.textContent = '';
         });
       });
 
