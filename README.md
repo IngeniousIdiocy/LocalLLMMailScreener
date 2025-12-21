@@ -396,6 +396,46 @@ Edit `data/system_prompt.txt` to customize:
 
 ---
 
+### Reducing False Positives & False Negatives
+
+No system prompt is perfect out of the box. After running for a while, you'll inevitably encounter:
+
+- **False Positives (FP)**: Notifications for emails you didn't care about — marketing that slipped through, routine alerts that feel urgent but aren't
+- **False Negatives (FN)**: Important emails that never triggered a notification — that time-sensitive message buried in "routine" mail
+
+Manually tweaking the system prompt is tedious and error-prone. Fix one FP, accidentally create three FNs. The `prompt-tuning/` directory contains an **automated prompt optimization tool** that solves this systematically.
+
+#### How It Works
+
+1. **Backfill** your historical emails from Gmail (the tool pulls emails based on decisions in `state.json`)
+2. **Label** misclassified emails as FP or FN with a brief reason why
+3. **Run the tuner** — it uses Claude Sonnet 4.5 to analyze your errors and propose prompt changes
+4. **Automatic testing** ensures changes don't break prompt injection resistance (parseltongue tests)
+5. **Iterate** until errors hit zero or your threshold
+
+The tool maintains a full history of attempts, backs up each prompt version, and can resume interrupted sessions. When you're happy with results, copy the tuned prompt to production with a single command.
+
+#### Quick Start
+
+```bash
+cd prompt-tuning
+npm install
+cp config.json.example config.json
+cp ../data/system_prompt.txt current_prompt.txt
+
+# Backfill your email history
+npm run backfill
+
+# Label FP/FN emails in notified/ and notnotified/ folders
+# Then run the tuner
+export ANTHROPIC_API_KEY=sk-ant-...
+npm run tune
+```
+
+**→ See [`prompt-tuning/README.md`](prompt-tuning/README.md) for detailed setup, configuration options, and the full tuning workflow.**
+
+---
+
 ### Behavior
 
 - Polls Gmail inbox on the configured interval and immediately enqueues any new IDs found (bounded by `MAX_LLM_QUEUE`, default 20). The Gmail poll itself does not wait for LLM work. Oldest queued emails are dropped (counted in stats) if the queue would exceed the cap. Each poll still uses `after:<now - (POLL_WINDOW_MS||POLL_INTERVAL_MS) - POLL_GRACE_MS>` (default 5s grace); widen the window if processing delays exceed the interval. Successful polls are summarized every `GMAIL_SUMMARY_INTERVAL_MIN` minutes (default 15, first summary after the first poll), while failures still log immediately.
