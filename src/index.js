@@ -5,6 +5,7 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import axios from 'axios';
 
 import { createGmailClient, listMessages, fetchRawMessage, parseRawEmail, gmailLinkFor } from './gmail.js';
 import { callLLM, healthCheckLLM } from './llm.js';
@@ -55,7 +56,7 @@ export const buildConfig = (env = process.env) => ({
   gmailQuery: env.GMAIL_QUERY || 'newer_than:1d',
   statePath: env.STATE_PATH || './data/state.json',
   maxProcessedIds: parseInt(env.MAX_PROCESSED_IDS || '50000', 10),
-  recentLimit: parseInt(env.RECENT_LIMIT || '200', 10),
+  recentLimit: parseInt(env.RECENT_LIMIT || '5000', 10),
   maxSmsChars: parseInt(env.MAX_SMS_CHARS || '900', 10),
   maxLlmConcurrency: parseInt(env.MAX_LLM_CONCURRENCY || env.MAX_CONCURRENCY || '3', 10),
   maxLlmQueue: parseInt(env.MAX_LLM_QUEUE || '20', 10),
@@ -70,6 +71,13 @@ export const buildConfig = (env = process.env) => ({
   notificationService: (env.NOTIFICATION_SERVICE || 'twilio').toLowerCase(),
   logDashboardRequests: (env.LOG_DASHBOARD_REQUESTS || 'false').toLowerCase() === 'true',
   llmApiKey: env.LLM_API_KEY || '',
+  anthropicApiKey: env.ANTHROPIC_API_KEY || '',
+  anthropicModelOpus: env.ANTHROPIC_MODEL_OPUS || 'claude-3-opus-20240229',
+  anthropicModelSonnet: env.ANTHROPIC_MODEL_SONNET || 'claude-3-5-sonnet-20241022',
+  analystMaxItemsOpus: parseInt(env.ANALYST_MAX_ITEMS_OPUS || '200', 10),
+  analystMaxItemsSonnet: parseInt(env.ANALYST_MAX_ITEMS_SONNET || '1000', 10),
+  analystMaxOutputTokens: parseInt(env.ANALYST_MAX_OUTPUT_TOKENS || '1200', 10),
+  analystTimeoutMs: parseInt(env.ANALYST_TIMEOUT_MS || '60000', 10),
   gmailClientId: env.GMAIL_CLIENT_ID,
   gmailClientSecret: env.GMAIL_CLIENT_SECRET,
   gmailRefreshToken: env.GMAIL_REFRESH_TOKEN,
@@ -232,6 +240,56 @@ const ensureStateDir = async (statePath) => {
   await fs.promises.mkdir(dir, { recursive: true });
 };
 
+const clampNumber = (val, min, max, fallback) => {
+  const num = Number(val);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.min(max, Math.max(min, num));
+};
+
+const deriveFeatureFlags = (trimmedEmail = {}) => {
+  const url = trimmedEmail.url_analysis || {};
+  const attachments = Array.isArray(trimmedEmail.attachments) ? trimmedEmail.attachments : [];
+  const stats = trimmedEmail.stats || {};
+  return {
+    has_attachments: attachments.length > 0,
+    attachment_count: attachments.length,
+    has_urls: (url.count || 0) > 0,
+    has_ip_based_urls: !!url.has_ip_based_urls,
+    has_mismatched_urls: !!url.has_mismatched_urls,
+    removed_sections: stats.removed_sections || [],
+    trimmed_chars: stats.trimmed_char_count || 0,
+    original_chars: stats.original_char_count || 0
+  };
+};
+
+const buildAnalysisFields = (trimmedEmail = {}) => {
+  const url = trimmedEmail.url_analysis || {};
+  const sender = trimmedEmail.sender_analysis || {};
+  const stats = trimmedEmail.stats || {};
+  return {
+    body_text: trimmedEmail.body_text || '',
+    body_excerpt: trimmedEmail.body_excerpt,
+    body_tail: trimmedEmail.body_tail,
+    attachments: trimmedEmail.attachments || [],
+    url_analysis: {
+      count: url.count || 0,
+      unique_domains: url.unique_domains || [],
+      has_ip_based_urls: !!url.has_ip_based_urls,
+      has_mismatched_urls: !!url.has_mismatched_urls
+    },
+    sender_analysis: sender,
+    removed_sections: stats.removed_sections || [],
+    token_estimate: stats.token_estimate || 0
+  };
+};
+
+const domainFromEmail = (email = '') => {
+  const match = String(email).match(/@([^>]+)>?$/);
+  if (match && match[1]) return match[1].toLowerCase();
+  const simple = String(email).split('@')[1];
+  return simple ? simple.toLowerCase() : '';
+};
+
 const tokenCountFromDecision = (decision) => decision?.tokens || 0;
 const computeRecentTps = (decisions, limit = 5) => {
   if (!Array.isArray(decisions) || decisions.length === 0) {
@@ -305,6 +363,8 @@ const processSingleMessage = async (ctx, messageMeta) => {
         from: parsed.from,
         subject: parsed.subject,
         trim_stats: trimmedEmail.stats,
+        feature_flags: deriveFeatureFlags(trimmedEmail),
+        analysis: buildAnalysisFields(trimmedEmail),
         decided_at: Date.now()
       };
     } catch (err) {
@@ -320,10 +380,12 @@ const processSingleMessage = async (ctx, messageMeta) => {
         gmail_link: gmailLink,
         from: parsed.from,
         subject: parsed.subject,
-      trim_stats: trimmedEmail.stats,
-      decided_at: Date.now()
-    };
-  }
+        trim_stats: trimmedEmail.stats,
+        feature_flags: deriveFeatureFlags(trimmedEmail),
+        analysis: buildAnalysisFields(trimmedEmail),
+        decided_at: Date.now()
+      };
+    }
 
   // Fire optional hook for immediate reporting (used by integration test logging).
   if (ctx.onDecision) {
@@ -639,9 +701,177 @@ const buildStatusSnapshot = (ctx) => {
       dry_run: ctx.config.dryRun,
       notification_service: ctx.config.notificationService,
       llm_base_url: ctx.config.llmBaseUrl,
-      llm_model: ctx.config.llmModel
+      llm_model: ctx.config.llmModel,
+      analyst_max_items_opus: ctx.config.analystMaxItemsOpus,
+      analyst_max_items_sonnet: ctx.config.analystMaxItemsSonnet,
+      analyst_max_output_tokens: ctx.config.analystMaxOutputTokens,
+      analyst_timeout_ms: ctx.config.analystTimeoutMs
     }
   };
+};
+
+const parseTimeWindowHours = (query) => {
+  const hoursRaw = query.hours ? Number(query.hours) : null;
+  const daysRaw = query.days ? Number(query.days) : null;
+  const totalHours = (Number.isFinite(hoursRaw) ? hoursRaw : 0) + (Number.isFinite(daysRaw) ? daysRaw * 24 : 0);
+  if (totalHours > 0) return Math.max(1, Math.min(totalHours, 24 * 60));
+  return 24; // default
+};
+
+const parseFilterStrings = (value) => {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.map((v) => String(v).toLowerCase()).filter(Boolean);
+  return String(value)
+    .split(',')
+    .map((v) => v.trim().toLowerCase())
+    .filter(Boolean);
+};
+
+const parseBooleanQuery = (val) => {
+  if (val === undefined) return null;
+  const str = String(val).toLowerCase();
+  if (['1', 'true', 'yes', 'y'].includes(str)) return true;
+  if (['0', 'false', 'no', 'n'].includes(str)) return false;
+  return null;
+};
+
+const filterRefusals = (decisions = [], filters = {}) => {
+  const hours = parseTimeWindowHours(filters);
+  const since = Date.now() - hours * 60 * 60 * 1000;
+  const minConf = filters.min_confidence != null ? Number(filters.min_confidence) : null;
+  const maxConf = filters.max_confidence != null ? Number(filters.max_confidence) : null;
+  const reasonIncludes = (filters.reason_includes || '').toLowerCase();
+  const subjectIncludes = (filters.subject_includes || '').toLowerCase();
+  const fromIncludes = (filters.from_includes || '').toLowerCase();
+  const domainIncludes = (filters.domain_includes || '').toLowerCase();
+  const removedSections = parseFilterStrings(filters.removed_section);
+  const hasAttachments = parseBooleanQuery(filters.has_attachments);
+  const hasUrls = parseBooleanQuery(filters.has_urls);
+  const hasIpUrls = parseBooleanQuery(filters.has_ip_based_urls);
+  const hasMismatch = parseBooleanQuery(filters.has_mismatched_urls);
+
+  return decisions.filter((d) => {
+    if (d.notify) return false;
+    const ts = d.decided_at || 0;
+    if (ts < since) return false;
+    if (Number.isFinite(minConf) && (d.confidence ?? 0) < minConf) return false;
+    if (Number.isFinite(maxConf) && (d.confidence ?? 0) > maxConf) return false;
+    const feature = d.feature_flags || {};
+    if (hasAttachments !== null && !!feature.has_attachments !== hasAttachments) return false;
+    if (hasUrls !== null && !!feature.has_urls !== hasUrls) return false;
+    if (hasIpUrls !== null && !!feature.has_ip_based_urls !== hasIpUrls) return false;
+    if (hasMismatch !== null && !!feature.has_mismatched_urls !== hasMismatch) return false;
+    if (removedSections.length) {
+      const present = (feature.removed_sections || []).map((s) => String(s).toLowerCase());
+      const hasAny = removedSections.some((r) => present.includes(r));
+      if (!hasAny) return false;
+    }
+    const reason = (d.reason || '').toLowerCase();
+    const subject = (d.subject || '').toLowerCase();
+    const from = (d.from || '').toLowerCase();
+    const domain = domainFromEmail(d.from);
+    if (reasonIncludes && !reason.includes(reasonIncludes)) return false;
+    if (subjectIncludes && !subject.includes(subjectIncludes)) return false;
+    if (fromIncludes && !from.includes(fromIncludes)) return false;
+    if (domainIncludes && !domain.includes(domainIncludes)) return false;
+    return true;
+  });
+};
+
+const bucketRefusals = (decisions = [], hours) => {
+  const useDaily = hours > 48;
+  const buckets = new Map();
+  decisions.forEach((d) => {
+    const ts = d.decided_at || 0;
+    if (!ts) return;
+    const date = new Date(ts);
+    const pad = (n) => String(n).padStart(2, '0');
+    const key = useDaily
+      ? `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`
+      : `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ${pad(
+          date.getUTCHours()
+        )}:00`;
+    const entry = buckets.get(key) || { label: key, count: 0 };
+    entry.count += 1;
+    buckets.set(key, entry);
+  });
+  return Array.from(buckets.values()).sort((a, b) => (a.label < b.label ? -1 : 1));
+};
+
+const topCounts = (items, keyFn, limit = 10) => {
+  const counts = new Map();
+  items.forEach((d) => {
+    const key = keyFn(d);
+    if (!key) return;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  return Array.from(counts.entries())
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, limit);
+};
+
+const summarizeDecision = (d) => ({
+  id: d.id,
+  from: d.from,
+  subject: d.subject,
+  reason: d.reason,
+  confidence: d.confidence,
+  decided_at: d.decided_at,
+  gmail_link: d.gmail_link,
+  feature_flags: d.feature_flags || {}
+});
+
+const buildRefusalAnalytics = (decisions, filters = {}) => {
+  const hours = parseTimeWindowHours(filters);
+  const filtered = filterRefusals(decisions, { ...filters, hours });
+  const latestLimit = clampNumber(filters.limit, 1, 500, 100);
+  return {
+    total: filtered.length,
+    window_hours: hours,
+    buckets: bucketRefusals(filtered, hours),
+    top_reasons: topCounts(filtered, (d) => (d.reason || '').slice(0, 120)),
+    top_senders: topCounts(filtered, (d) => (d.from || '').toLowerCase()),
+    top_domains: topCounts(filtered, (d) => domainFromEmail(d.from)),
+    latest: filtered.slice(-latestLimit).reverse().map(summarizeDecision)
+  };
+};
+
+const selectAnalysisCases = (decisions = [], filters = {}, modelCaps = {}) => {
+  const hours = parseTimeWindowHours(filters);
+  const filtered = filterRefusals(decisions, { ...filters, hours });
+  const maxItems = modelCaps.maxItems || filtered.length;
+  const trimmed = filtered.slice(-maxItems);
+  return { hours, selected: trimmed };
+};
+
+const buildClaudePrompt = ({ cases = [], windowHours, filtersSummary }) => {
+  const header = `You are reviewing emails that were previously marked notify=false by a local model. Identify borderline or likely misclassified cases that should have been notify=true.`;
+  const filterLine = filtersSummary ? `Filters: ${filtersSummary}` : '';
+  const body = cases
+    .map((c, idx) => {
+      const features = c.feature_flags || {};
+      const url = (c.analysis?.url_analysis || {});
+      const attachments = c.analysis?.attachments || [];
+      const lines = [
+        `Case ${idx + 1}:`,
+        `From: ${c.from || 'unknown'}`,
+        `Subject: ${c.subject || '—'}`,
+        `Reason: ${c.reason || '—'}`,
+        `Confidence: ${c.confidence ?? 'n/a'}`,
+        `Decided at: ${new Date(c.decided_at || 0).toISOString()}`,
+        `Features: attachments=${attachments.length}, urls=${url.count || 0}, ip_urls=${url.has_ip_based_urls ? 'yes' : 'no'}, mismatched_urls=${url.has_mismatched_urls ? 'yes' : 'no'}, removed_sections=${(features.removed_sections || []).join('|')}`,
+        `Body (trimmed): ${c.analysis?.body_text || ''}`
+      ];
+      return lines.join('\n');
+    })
+    .join('\n\n');
+  const ask = `For the above cases (last ${windowHours}h), return:
+- borderline_cases: list of case numbers where notify=true is plausible, with a 1-2 line rationale
+- obvious_notify_true: any case numbers that clearly should be notify=true
+- patterns: concise patterns you see in refusals
+- next_rules: 2-4 precise prompt/rule tweaks to reduce false refusals without weakening phishing handling`;
+  return [header, filterLine, body, ask].filter(Boolean).join('\n\n');
 };
 
 const startServer = (ctx) => {
@@ -661,6 +891,93 @@ const startServer = (ctx) => {
 
   app.get('/api/status', (req, res) => {
     res.json(buildStatusSnapshot(ctx));
+  });
+
+  app.get('/api/analytics/refusals', (req, res) => {
+    const current = ctx.stateManager.getState();
+    const decisions = current.recent_decisions || [];
+    const analytics = buildRefusalAnalytics(decisions, req.query || {});
+    res.json(analytics);
+  });
+
+  app.post('/api/analysis/claude', async (req, res) => {
+    const apiKey = ctx.config.anthropicApiKey;
+    if (!apiKey) {
+      return res.status(400).json({ ok: false, error: 'Missing Anthropic API key' });
+    }
+    const body = req.body || {};
+    const modelChoice = String(body.model || 'sonnet').toLowerCase();
+    const model =
+      modelChoice === 'opus' ? ctx.config.anthropicModelOpus : ctx.config.anthropicModelSonnet;
+    const maxItemsCap =
+      modelChoice === 'opus' ? ctx.config.analystMaxItemsOpus : ctx.config.analystMaxItemsSonnet;
+    const maxItems = clampNumber(body.max_items, 1, maxItemsCap, Math.min(200, maxItemsCap));
+    const filters = { ...(body.filters || {}), hours: body.hours, days: body.days };
+    const current = ctx.stateManager.getState();
+    const decisions = current.recent_decisions || [];
+    const { hours, selected } = selectAnalysisCases(decisions, filters, { maxItems });
+    if (!selected.length) {
+      return res.json({ ok: true, model, count: 0, result: 'No refusals matched the filters.' });
+    }
+
+    const filterSummaryParts = [];
+    if (filters.reason_includes) filterSummaryParts.push(`reason~"${filters.reason_includes}"`);
+    if (filters.subject_includes) filterSummaryParts.push(`subject~"${filters.subject_includes}"`);
+    if (filters.from_includes) filterSummaryParts.push(`from~"${filters.from_includes}"`);
+    if (filters.domain_includes) filterSummaryParts.push(`domain~"${filters.domain_includes}"`);
+    if (filters.min_confidence != null) filterSummaryParts.push(`min_conf=${filters.min_confidence}`);
+    if (filters.max_confidence != null) filterSummaryParts.push(`max_conf=${filters.max_confidence}`);
+    if (filters.has_attachments != null) filterSummaryParts.push(`attachments=${filters.has_attachments}`);
+    if (filters.has_urls != null) filterSummaryParts.push(`urls=${filters.has_urls}`);
+    if (filters.has_ip_based_urls != null) filterSummaryParts.push(`ip_urls=${filters.has_ip_based_urls}`);
+    if (filters.has_mismatched_urls != null) filterSummaryParts.push(`mismatch_urls=${filters.has_mismatched_urls}`);
+    if (filters.removed_section) filterSummaryParts.push(`removed=${filters.removed_section}`);
+    const filterSummary = filterSummaryParts.join(', ');
+
+    const prompt = buildClaudePrompt({
+      cases: selected,
+      windowHours: hours,
+      filtersSummary: filterSummary
+    });
+
+    const payload = {
+      model,
+      max_tokens: clampNumber(body.max_tokens, 200, 4000, ctx.config.analystMaxOutputTokens),
+      temperature: clampNumber(body.temperature, 0, 1, 0),
+      system:
+        'You are a focused email triage auditor. Be concise, decisive, and prefer structured bullet summaries. Default to notify=true only when action/security/family/finance/operations are impacted.',
+      messages: [{ role: 'user', content: prompt }]
+    };
+
+    try {
+      const apiRes = await axios.post('https://api.anthropic.com/v1/messages', payload, {
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        timeout: ctx.config.analystTimeoutMs
+      });
+      const contentArr = apiRes.data?.content || [];
+      const text = contentArr
+        .map((c) => c.text)
+        .filter(Boolean)
+        .join('\n')
+        .trim();
+      res.json({
+        ok: true,
+        model,
+        count: selected.length,
+        window_hours: hours,
+        filters: filters,
+        result: text || '(empty response)'
+      });
+    } catch (err) {
+      const apiMsg = err.response?.data?.error?.message || err.response?.data?.message;
+      res.status(502).json({
+        ok: false,
+        error: apiMsg || err.message || 'Anthropic request failed'
+      });
+    }
   });
 
   app.get('/', (req, res) => {

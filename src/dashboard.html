@@ -50,8 +50,32 @@
       margin: 0 auto;
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 18px;
     }
+
+    .btn {
+      background: var(--accent);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: #02060f;
+      padding: 8px 14px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+      transition: transform 0.1s ease, box-shadow 0.2s ease;
+    }
+
+    .btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(65,214,255,0.2); }
+    .btn:active:not(:disabled) { transform: translateY(0); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn.secondary {
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      border-color: rgba(255,255,255,0.1);
+    }
+
+    .btn.small { padding: 5px 8px; font-size: 11px; }
 
     h1 {
       font-size: 1.75rem;
@@ -312,6 +336,512 @@
       grid-column: 1 / -1;
     }
 
+    /* Analyst Section Styles */
+    .analyst-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .control-group-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: stretch;
+    }
+    
+    .control-group-row > .btn {
+      display: flex;
+      align-items: center;
+    }
+
+    .control {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--glass-border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      min-width: 120px;
+    }
+
+    .control.wide {
+      flex: 1;
+      min-width: 140px;
+    }
+
+    .control label {
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.03em;
+    }
+
+    .control input, .control select, .control textarea {
+      background: rgba(0,0,0,0.35);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+      padding: 6px 8px;
+      color: var(--text);
+      font-size: 13px;
+      font-family: var(--font);
+      outline: none;
+      transition: border-color 0.15s ease;
+      height: 30px;
+    }
+
+    .control input:focus, .control select:focus {
+      border-color: var(--accent);
+    }
+
+    .control input[type="number"] {
+      width: 50px;
+      text-align: center;
+    }
+
+    .control-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 30px;
+    }
+
+    .toggle-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .analyst-meta {
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    /* 2x2 Checkbox Grid */
+    .control.checkbox-grid {
+      padding: 8px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .checkbox-2x2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 14px;
+    }
+
+    .checkbox-2x2 label {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--muted);
+      cursor: pointer;
+      transition: color 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .checkbox-2x2 label:hover {
+      color: var(--text);
+    }
+
+    .checkbox-2x2 input[type="checkbox"] {
+      width: 12px;
+      height: 12px;
+      accent-color: var(--accent);
+    }
+
+    /* Segmented Toggle Control */
+    .segment-toggle {
+      display: inline-flex;
+      background: rgba(0,0,0,0.4);
+      border: 1px solid var(--glass-border);
+      border-radius: 6px;
+      padding: 2px;
+      gap: 2px;
+    }
+
+    .segment-toggle button {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      font-family: var(--font);
+    }
+
+    .segment-toggle button:hover:not(.active) {
+      color: var(--text);
+      background: rgba(255,255,255,0.05);
+    }
+
+    .segment-toggle button.active {
+      background: var(--accent);
+      color: #02060f;
+    }
+
+    .list-chip {
+      display: inline-flex;
+      padding: 6px 10px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--glass-border);
+      font-size: 12px;
+      margin: 3px;
+    }
+
+    #analyst-panel {
+      display: none;
+    }
+
+    #analyst-panel.active {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .grid-halves {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-top: 12px;
+      align-items: start;
+    }
+
+    @media (max-width: 800px) {
+      .grid-halves {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .mono {
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      color: var(--muted);
+      white-space: pre-wrap;
+    }
+
+    .pill-outline {
+      border: 1px solid var(--glass-border);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 11px;
+      color: var(--muted);
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .list-scroll {
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding-right: 4px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .list-scroll.wrap {
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 6px;
+      flex: 0 0 auto;
+      max-height: 120px;
+    }
+
+    .list-scroll::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .list-scroll::-webkit-scrollbar-track {
+      background: rgba(255,255,255,0.03);
+      border-radius: 3px;
+    }
+
+    .list-scroll::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.15);
+      border-radius: 3px;
+    }
+
+    .output-row {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+    @media (max-width: 1100px) {
+      .output-row {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .claude-pane {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--glass-border);
+      border-radius: 12px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-height: 0;
+    }
+
+    .signals-pane {
+      /* No overflow - content determines height */
+      overflow: visible;
+    }
+    
+    .signals-pane .list-scroll {
+      /* Disable scroll in signals - show all content */
+      overflow: visible;
+      max-height: none;
+    }
+    
+    .signals-pane .list-scroll.wrap {
+      max-height: none;
+    }
+    
+    .refusals-pane {
+      /* Height set by JS to match signals-pane */
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .refusals-pane .list-scroll {
+      /* Scroll when content exceeds available space */
+      overflow-y: auto;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .claude-output-section {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--glass-border);
+      border-radius: 12px;
+      padding: 14px;
+    }
+
+    .claude-pane-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .claude-pane-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .claude-pane-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .claude-output-content {
+      margin-top: 12px;
+    }
+
+    .claude-output-content .mono {
+      background: rgba(0,0,0,0.4);
+      padding: 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.06);
+      max-height: 50vh;
+      overflow: auto;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      color: var(--muted);
+      white-space: pre-wrap;
+    }
+
+    .claude-output-content .rendered {
+      background: rgba(0,0,0,0.25);
+      padding: 16px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.08);
+      line-height: 1.6;
+      max-height: 50vh;
+      overflow: auto;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+
+    .rendered h1,
+    .rendered h2,
+    .rendered h3,
+    .rendered h4 {
+      margin: 12px 0 8px 0;
+      font-size: 15px;
+      color: var(--text);
+    }
+
+    .rendered h1:first-child,
+    .rendered h2:first-child {
+      margin-top: 0;
+    }
+
+    .rendered ul, .rendered ol {
+      padding-left: 20px;
+      margin: 8px 0;
+    }
+
+    .rendered li {
+      margin-bottom: 6px;
+      color: var(--text);
+      opacity: 0.9;
+    }
+
+    .rendered p {
+      margin: 8px 0;
+    }
+
+    .rendered strong {
+      color: var(--accent);
+    }
+
+    .section-spacer {
+      margin-top: 14px;
+    }
+
+    .grid-halves.section-spacer {
+      margin-top: 12px;
+    }
+
+    /* Refusal card in latest list */
+    .refusal-card {
+      background: rgba(0,0,0,0.25);
+      border: 1px solid var(--glass-border);
+      border-radius: 10px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      transition: border-color 0.15s ease;
+    }
+
+    .refusal-card:hover {
+      border-color: rgba(255,255,255,0.2);
+    }
+
+    .refusal-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .refusal-card-subject {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .refusal-card-time {
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .refusal-card-from {
+      font-size: 12px;
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .refusal-card-reason {
+      font-size: 12px;
+      color: var(--text);
+      opacity: 0.8;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .refusal-card-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 4px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .refusal-card-meta {
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .refusal-card-meta .tag {
+      background: rgba(255,255,255,0.08);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    /* Signal bars */
+    .signal-section {
+      margin-bottom: 12px;
+    }
+
+    .signal-label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 6px;
+    }
+
+    .signal-items {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .signal-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--glass-border);
+      border-radius: 6px;
+      font-size: 12px;
+      color: var(--text);
+    }
+
+    .signal-chip .count {
+      background: rgba(65,214,255,0.2);
+      color: var(--accent);
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+
     /* Responsive */
     @media (max-width: 900px) {
       .health-row {
@@ -350,6 +880,132 @@
       </div>
       <div class="notifications-grid" id="notifications-grid"></div>
     </div>
+
+    <div class="card">
+      <div class="card-header toggle-row">
+        <div>
+          <span class="card-title">Analyst Mode</span>
+          <div class="analyst-meta">Manual refusal exploration and Claude analysis (no auto refresh).</div>
+        </div>
+        <button class="btn" id="analyst-toggle">Enable</button>
+      </div>
+    </div>
+
+    <div class="card" id="analyst-panel">
+      <div class="card-header">
+        <span class="card-title">Refusal Explorer</span>
+        <div class="pill-outline" id="analyst-window-label"></div>
+      </div>
+
+      <div class="analyst-controls">
+        <!-- Row 1: Time, Model, Load button, Checkboxes -->
+        <div class="control-group-row">
+          <div class="control">
+            <label>Hours</label>
+            <div class="control-row">
+              <button class="btn secondary small" data-step-hours="-1">−</button>
+              <input type="number" id="hours-input" min="1" max="336" value="24" />
+              <button class="btn secondary small" data-step-hours="1">+</button>
+            </div>
+          </div>
+          <div class="control">
+            <label>Days</label>
+            <div class="control-row">
+              <button class="btn secondary small" data-step-days="-1">−</button>
+              <input type="number" id="days-input" min="0" max="30" value="0" />
+              <button class="btn secondary small" data-step-days="1">+</button>
+            </div>
+          </div>
+          <div class="control">
+            <label>Model</label>
+            <div class="control-row">
+              <select id="model-select">
+                <option value="opus">Opus</option>
+                <option value="sonnet">Sonnet</option>
+              </select>
+              <span class="analyst-meta" id="model-max-label"></span>
+            </div>
+          </div>
+          <button class="btn" id="load-analytics">Load refusals</button>
+          <div class="control checkbox-grid">
+            <div class="checkbox-2x2">
+              <label><input type="checkbox" id="has-attachments" /> Attachments</label>
+              <label><input type="checkbox" id="has-ip-urls" /> IP URLs</label>
+              <label><input type="checkbox" id="has-urls" /> URLs</label>
+              <label><input type="checkbox" id="has-mismatch" /> Mismatched</label>
+            </div>
+          </div>
+          <span class="analyst-meta" id="analyst-status"></span>
+        </div>
+
+        <!-- Row 2: Text filters -->
+        <div class="control-group-row">
+          <div class="control wide">
+            <label>Reason contains</label>
+            <input id="reason-filter" placeholder="marketing, newsletter, etc" />
+          </div>
+          <div class="control wide">
+            <label>Subject contains</label>
+            <input id="subject-filter" placeholder="invoice, alert, etc" />
+          </div>
+          <div class="control wide">
+            <label>From contains</label>
+            <input id="from-filter" placeholder="example.com, sender" />
+          </div>
+          <div class="control wide">
+            <label>Domain contains</label>
+            <input id="domain-filter" placeholder="domain.com" />
+          </div>
+          <div class="control">
+            <label>Confidence</label>
+            <div class="control-row">
+              <input id="min-conf" type="number" min="0" max="1" step="0.05" placeholder="min" style="width:55px;" />
+              <input id="max-conf" type="number" min="0" max="1" step="0.05" placeholder="max" style="width:55px;" />
+            </div>
+          </div>
+          <div class="control wide">
+            <label>Removed sections</label>
+            <input id="removed-section" placeholder="unsubscribe_footer, reply_hea..." />
+          </div>
+        </div>
+      </div>
+
+      <!-- Claude Output (always visible header, content hidden until run) -->
+      <div class="claude-output-section section-spacer">
+        <div class="claude-pane-header">
+          <div class="claude-pane-title">
+            <span class="card-title">Claude Output</span>
+            <span class="pill-outline" id="claude-meta"></span>
+          </div>
+          <div class="claude-pane-actions">
+            <button class="btn" id="run-claude">Run Claude analysis</button>
+            <div class="segment-toggle" id="view-toggle">
+              <button id="view-rendered-btn" class="active">Rendered</button>
+              <button id="view-raw-btn">Raw</button>
+            </div>
+            <button class="btn secondary small" id="copy-output" disabled>Copy</button>
+          </div>
+        </div>
+        <div class="claude-output-content" id="claude-output-content" style="display:none;">
+          <div class="rendered" id="claude-output-rendered"></div>
+          <pre class="mono" id="claude-output-raw" style="display:none;"></pre>
+        </div>
+      </div>
+
+      <!-- Results Grid -->
+      <div class="grid-halves section-spacer">
+        <div class="claude-pane signals-pane">
+          <div class="card-title">Top Signals</div>
+          <div id="top-signals"></div>
+          <div class="signal-label" style="margin-top:12px;">Hourly Distribution</div>
+          <div class="list-scroll wrap" id="bucket-list"></div>
+        </div>
+        <div class="claude-pane refusals-pane">
+          <div class="card-title">Latest Refusals</div>
+          <div class="list-scroll" id="latest-refusals"></div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -357,6 +1013,39 @@
     const statsGrid = document.getElementById('stats-grid');
     const notificationsGrid = document.getElementById('notifications-grid');
     const configEl = document.getElementById('config');
+    const analystToggle = document.getElementById('analyst-toggle');
+    const analystPanel = document.getElementById('analyst-panel');
+    const analystStatus = document.getElementById('analyst-status');
+    const analystWindowLabel = document.getElementById('analyst-window-label');
+    const bucketList = document.getElementById('bucket-list');
+    const latestRefusals = document.getElementById('latest-refusals');
+    const topSignals = document.getElementById('top-signals');
+    const signalsPane = document.querySelector('.signals-pane');
+    const refusalsPane = document.querySelector('.refusals-pane');
+    const claudeMeta = document.getElementById('claude-meta');
+    const claudeOutputRendered = document.getElementById('claude-output-rendered');
+    const claudeOutputRaw = document.getElementById('claude-output-raw');
+    const viewRenderedBtn = document.getElementById('view-rendered-btn');
+    const viewRawBtn = document.getElementById('view-raw-btn');
+    const copyOutputBtn = document.getElementById('copy-output');
+    const modelMaxLabel = document.getElementById('model-max-label');
+    const hoursInput = document.getElementById('hours-input');
+    const daysInput = document.getElementById('days-input');
+    const reasonFilter = document.getElementById('reason-filter');
+    const subjectFilter = document.getElementById('subject-filter');
+    const fromFilter = document.getElementById('from-filter');
+    const domainFilter = document.getElementById('domain-filter');
+    const minConf = document.getElementById('min-conf');
+    const maxConf = document.getElementById('max-conf');
+    const hasAttachments = document.getElementById('has-attachments');
+    const hasUrls = document.getElementById('has-urls');
+    const hasIpUrls = document.getElementById('has-ip-urls');
+    const hasMismatch = document.getElementById('has-mismatch');
+    const removedSection = document.getElementById('removed-section');
+    const modelSelect = document.getElementById('model-select');
+    const loadAnalyticsBtn = document.getElementById('load-analytics');
+    const runClaudeBtn = document.getElementById('run-claude');
+    const claudeOutputContent = document.getElementById('claude-output-content');
 
     const fmtTime = (ts) => ts ? new Date(ts).toLocaleString() : '—';
     
@@ -382,6 +1071,33 @@
     };
 
     const fmtComma = (n) => (n || 0).toLocaleString();
+    const escapeHtml = (str = '') => String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+
+    const renderMarkdown = (text) => {
+      if (window.marked?.parse) {
+        return window.marked.parse(text || '');
+      }
+      // Fallback: basic newline + bold/italic
+      let html = escapeHtml(text || '');
+      html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+      html = html.replace(/\n/g, '<br/>');
+      return html;
+    };
+
+    const applyViewToggle = () => {
+      const view = analystState.view;
+      const showRendered = view === 'rendered';
+      claudeOutputRendered.style.display = showRendered ? 'block' : 'none';
+      claudeOutputRaw.style.display = showRendered ? 'none' : 'block';
+      viewRenderedBtn.classList.toggle('active', showRendered);
+      viewRawBtn.classList.toggle('active', !showRendered);
+    };
 
     const statusBadge = (ok) => {
       const cls = ok ? 'ok' : 'fail';
@@ -501,10 +1217,289 @@
       configEl.textContent = `Poll ${cfg.poll_interval_ms}ms · Conc ${cfg.max_llm_concurrency} · Queue ${cfg.max_llm_queue} · Dry ${cfg.dry_run} · ${svc}`;
     };
 
+    const analystState = { enabled: false, view: 'rendered', cfg: {} };
+
+    const updateWindowLabel = () => {
+      const hours = Number(hoursInput.value) || 0;
+      const days = Number(daysInput.value) || 0;
+      const totalHours = hours + days * 24;
+      analystWindowLabel.textContent = `${totalHours || 24}h window (${hours}h + ${days}d)`;
+    };
+
+    const updateModelMaxLabel = () => {
+      const model = modelSelect.value;
+      const opusMax = analystState.cfg.analyst_max_items_opus || 200;
+      const sonnetMax = analystState.cfg.analyst_max_items_sonnet || 1000;
+      const max = model === 'opus' ? opusMax : sonnetMax;
+      modelMaxLabel.textContent = `Max ${max} items`;
+      return max;
+    };
+
+    const buildFilterParams = () => {
+      const params = new URLSearchParams();
+      const hoursVal = Math.max(1, Math.min(Number(hoursInput.value) || 24, 24 * 60));
+      const daysVal = Math.max(0, Math.min(Number(daysInput.value) || 0, 60));
+      params.set('hours', hoursVal + daysVal * 24);
+      if (reasonFilter.value) params.set('reason_includes', reasonFilter.value);
+      if (subjectFilter.value) params.set('subject_includes', subjectFilter.value);
+      if (fromFilter.value) params.set('from_includes', fromFilter.value);
+      if (domainFilter.value) params.set('domain_includes', domainFilter.value);
+      if (minConf.value) params.set('min_confidence', minConf.value);
+      if (maxConf.value) params.set('max_confidence', maxConf.value);
+      if (removedSection.value) params.set('removed_section', removedSection.value);
+      if (hasAttachments.checked) params.set('has_attachments', 'true');
+      if (hasUrls.checked) params.set('has_urls', 'true');
+      if (hasIpUrls.checked) params.set('has_ip_based_urls', 'true');
+      if (hasMismatch.checked) params.set('has_mismatched_urls', 'true');
+      const limit = updateModelMaxLabel();
+      params.set('limit', limit);
+      return params;
+    };
+
+    const renderBuckets = (buckets = []) => {
+      if (!buckets.length) {
+        bucketList.innerHTML = '<div class="analyst-meta">No refusals in range.</div>';
+        return;
+      }
+      bucketList.innerHTML = buckets
+        .map((b) => `<span class="signal-chip">${escapeHtml(b.label)}<span class="count">${b.count}</span></span>`)
+        .join('');
+    };
+
+    const syncPaneHeights = () => {
+      if (!signalsPane || !refusalsPane) return;
+      // Reset refusals height first so signals can size naturally
+      refusalsPane.style.height = 'auto';
+      // Wait for layout, then match heights
+      requestAnimationFrame(() => {
+        const signalsHeight = signalsPane.offsetHeight;
+        if (signalsHeight > 0) {
+          refusalsPane.style.height = signalsHeight + 'px';
+        }
+      });
+    };
+
+    // Re-sync on window resize
+    window.addEventListener('resize', () => {
+      if (analystState.enabled) syncPaneHeights();
+    });
+
+    const renderTopSignals = (analytics) => {
+      const renderSection = (arr, label) => {
+        if (!arr || !arr.length) return '';
+        const chips = arr.slice(0, 6).map((r) => 
+          `<span class="signal-chip">${escapeHtml(r.label)}<span class="count">${r.count}</span></span>`
+        ).join('');
+        return `<div class="signal-section"><div class="signal-label">${label}</div><div class="signal-items">${chips}</div></div>`;
+      };
+      
+      const sections = [
+        renderSection(analytics.top_reasons, 'Top Reasons'),
+        renderSection(analytics.top_senders, 'Top Senders'),
+        renderSection(analytics.top_domains, 'Top Domains')
+      ].filter(Boolean);
+      
+      topSignals.innerHTML = sections.length ? sections.join('') : '<div class="analyst-meta">No signals found</div>';
+    };
+
+    const renderLatestRefusals = (latest = []) => {
+      if (!latest.length) {
+        latestRefusals.innerHTML = '<div class="analyst-meta">No items.</div>';
+        return;
+      }
+      latestRefusals.innerHTML = latest
+        .map((r) => {
+          const flags = r.feature_flags || {};
+          const tags = [
+            flags.has_attachments ? 'attach' : null,
+            flags.has_urls ? 'urls' : null,
+            flags.has_ip_based_urls ? 'ip' : null,
+            flags.has_mismatched_urls ? 'mismatch' : null
+          ].filter(Boolean).map(t => `<span class="tag">${t}</span>`).join('');
+          
+          return `
+            <div class="refusal-card">
+              <div class="refusal-card-header">
+                <span class="refusal-card-subject">${escapeHtml(r.subject || 'No subject')}</span>
+                <span class="refusal-card-time">${fmtTimeShort(r.decided_at)}</span>
+              </div>
+              <div class="refusal-card-from">${escapeHtml(r.from || 'unknown')}</div>
+              <div class="refusal-card-reason">${escapeHtml(r.reason || '')}</div>
+              <div class="refusal-card-footer">
+                <div class="refusal-card-meta">
+                  <span>conf: ${r.confidence ?? 'n/a'}</span>
+                  ${tags}
+                </div>
+                ${r.gmail_link ? `<a class="notif-link" href="${r.gmail_link}" target="_blank">Open</a>` : ''}
+              </div>
+            </div>
+          `;
+        })
+        .join('');
+    };
+
+    const loadRefusalAnalytics = async () => {
+      analystStatus.textContent = 'Loading...';
+      analystStatus.style.color = 'var(--muted)';
+      updateWindowLabel();
+      try {
+        const params = buildFilterParams();
+        const res = await fetch(`/api/analytics/refusals?${params.toString()}`);
+        const data = await res.json();
+        const total = data.total || 0;
+        analystStatus.textContent = `Found ${total} refusals`;
+        analystStatus.style.color = 'var(--text)';
+        
+        // Auto-select model based on count
+        const opusMax = analystState.cfg.analyst_max_items_opus || 200;
+        if (total <= opusMax) {
+          modelSelect.value = 'opus';
+        } else {
+          modelSelect.value = 'sonnet';
+        }
+        updateModelMaxLabel();
+        
+        renderBuckets(data.buckets || []);
+        renderTopSignals(data);
+        renderLatestRefusals(data.latest || []);
+        syncPaneHeights();
+      } catch (e) {
+        console.error('Analytics fetch failed', e);
+        analystStatus.textContent = 'Failed to load';
+        analystStatus.style.color = 'var(--danger)';
+      }
+    };
+
+    const runClaudeAnalysis = async () => {
+      // Don't overwrite analyst-status - show running state in claude-meta instead
+      claudeMeta.textContent = 'Running...';
+      // Show the output content area
+      claudeOutputContent.style.display = 'block';
+      copyOutputBtn.disabled = true;
+      claudeOutputRendered.innerHTML = '<span style="color:var(--muted);">Running analysis...</span>';
+      claudeOutputRaw.textContent = 'Running analysis...';
+      applyViewToggle();
+      updateWindowLabel();
+      const hoursVal = Math.max(1, Math.min(Number(hoursInput.value) || 24, 24 * 60));
+      const daysVal = Math.max(0, Math.min(Number(daysInput.value) || 0, 60));
+      const filters = {};
+      if (reasonFilter.value) filters.reason_includes = reasonFilter.value;
+      if (subjectFilter.value) filters.subject_includes = subjectFilter.value;
+      if (fromFilter.value) filters.from_includes = fromFilter.value;
+      if (domainFilter.value) filters.domain_includes = domainFilter.value;
+      if (minConf.value) filters.min_confidence = minConf.value;
+      if (maxConf.value) filters.max_confidence = maxConf.value;
+      if (removedSection.value) filters.removed_section = removedSection.value;
+      if (hasAttachments.checked) filters.has_attachments = true;
+      if (hasUrls.checked) filters.has_urls = true;
+      if (hasIpUrls.checked) filters.has_ip_based_urls = true;
+      if (hasMismatch.checked) filters.has_mismatched_urls = true;
+      const limit = updateModelMaxLabel();
+      const payload = {
+        model: modelSelect.value,
+        max_items: limit,
+        hours: hoursVal,
+        days: daysVal,
+        filters
+      };
+      try {
+        const res = await fetch('/api/analysis/claude', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok || data.ok === false) {
+          const msg = data.error || 'Claude call failed';
+          claudeMeta.textContent = 'Error';
+          claudeOutputRendered.innerHTML = `<span style="color:var(--danger);">${escapeHtml(msg)}</span>`;
+          claudeOutputRaw.textContent = msg;
+          return;
+        }
+        claudeMeta.textContent = `${data.model} · ${data.count} cases · ${data.window_hours || '?'}h`;
+        const outputText = data.result || '(empty response)';
+        claudeOutputRendered.innerHTML = renderMarkdown(outputText);
+        claudeOutputRaw.textContent = outputText;
+        copyOutputBtn.disabled = false;
+      } catch (e) {
+        console.error('Claude analysis failed', e);
+        claudeMeta.textContent = 'Error';
+        claudeOutputRendered.innerHTML = '<span style="color:var(--danger);">Claude call failed</span>';
+        claudeOutputRaw.textContent = 'Claude call failed';
+      }
+    };
+
+    const wireAnalystControls = () => {
+      analystToggle?.addEventListener('click', () => {
+        analystState.enabled = !analystState.enabled;
+        analystPanel.classList.toggle('active', analystState.enabled);
+        analystToggle.textContent = analystState.enabled ? 'Disable' : 'Enable';
+        if (analystState.enabled) {
+          loadRefusalAnalytics();
+        }
+      });
+
+      viewRenderedBtn?.addEventListener('click', () => {
+        analystState.view = 'rendered';
+        applyViewToggle();
+      });
+
+      viewRawBtn?.addEventListener('click', () => {
+        analystState.view = 'raw';
+        applyViewToggle();
+      });
+
+      document.querySelectorAll('[data-step-hours]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const step = Number(btn.getAttribute('data-step-hours')) || 0;
+          hoursInput.value = Math.max(1, Math.min((Number(hoursInput.value) || 0) + step, 24 * 60));
+          updateWindowLabel();
+        });
+      });
+
+      document.querySelectorAll('[data-step-days]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const step = Number(btn.getAttribute('data-step-days')) || 0;
+          daysInput.value = Math.max(0, Math.min((Number(daysInput.value) || 0) + step, 60));
+          updateWindowLabel();
+        });
+      });
+
+      modelSelect?.addEventListener('change', () => updateModelMaxLabel());
+
+      loadAnalyticsBtn?.addEventListener('click', loadRefusalAnalytics);
+      runClaudeBtn?.addEventListener('click', runClaudeAnalysis);
+      updateWindowLabel();
+      updateModelMaxLabel();
+
+      copyOutputBtn?.addEventListener('click', async () => {
+        const text = analystState.view === 'raw'
+          ? claudeOutputRaw.textContent || ''
+          : claudeOutputRendered.textContent || '';
+        try {
+          await navigator.clipboard.writeText(text);
+          const origText = copyOutputBtn.textContent;
+          copyOutputBtn.textContent = 'Copied!';
+          setTimeout(() => { copyOutputBtn.textContent = origText; }, 1500);
+        } catch (err) {
+          const origText = copyOutputBtn.textContent;
+          copyOutputBtn.textContent = 'Failed';
+          setTimeout(() => { copyOutputBtn.textContent = origText; }, 1500);
+        }
+      });
+
+      applyViewToggle();
+    };
+
+    let latestConfig = {};
+
     const refresh = async () => {
       try {
         const res = await fetch('/api/status');
         const data = await res.json();
+        latestConfig = data.config_sanitized || {};
+        analystState.cfg = latestConfig;
+        updateModelMaxLabel();
         const cfg = data.config_sanitized || {};
         renderHealth(data.health || {}, cfg);
         renderStats(data.stats || {});
@@ -515,8 +1510,10 @@
       }
     };
 
+    wireAnalystControls();
     refresh();
     setInterval(refresh, 2000);
   </script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </body>
 </html>
