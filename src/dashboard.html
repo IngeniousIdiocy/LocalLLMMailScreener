@@ -616,12 +616,54 @@
       flex-direction: column;
     }
     
-    .refusals-pane .list-scroll {
-      /* Scroll when content exceeds available space */
-      overflow-y: auto;
-      flex: 1;
-      min-height: 0;
-    }
+.refusals-pane .list-scroll {
+  /* Scroll when content exceeds available space */
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.charts-card {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chart-select-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.chart-select-row select {
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  min-width: 220px;
+}
+
+.chart-area {
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  padding: 10px;
+  min-height: 260px;
+  display: none;
+}
+
+.chart-area.active {
+  display: block;
+}
 
     .claude-output-section {
       background: rgba(255,255,255,0.03);
@@ -893,7 +935,7 @@
 
     <div class="card" id="analyst-panel">
       <div class="card-header">
-        <span class="card-title">Refusal Explorer</span>
+        <span class="card-title" id="analyst-title">Refusal Explorer (filtered 0 refusals)</span>
         <div class="pill-outline" id="analyst-window-label"></div>
       </div>
 
@@ -992,6 +1034,29 @@
         </div>
       </div>
 
+      <div class="card charts-card" id="charts-card">
+        <div class="chart-select-row">
+          <span class="card-title">Charts</span>
+          <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <select id="chart-select">
+              <option value="none">None</option>
+              <option value="confidence-hist">Confidence distribution</option>
+              <option value="confidence-reason">Confidence by reason</option>
+              <option value="time-heat">Time heatmap (hour x weekday)</option>
+              <option value="reason-trend">Reason trend over time</option>
+              <option value="domain-bars">Sender/domain concentration</option>
+              <option value="risk-mix">URL/Attachment mix</option>
+              <option value="removed-sections">Removed sections impact</option>
+            </select>
+            <button class="btn secondary small" id="run-reason-buckets">Bucket reasons with Claude</button>
+            <span class="analyst-meta" id="reason-buckets-status"></span>
+          </div>
+        </div>
+        <div class="chart-area" id="chart-area">
+          <canvas id="refusal-chart" height="260"></canvas>
+        </div>
+      </div>
+
       <!-- Results Grid -->
       <div class="grid-halves section-spacer">
         <div class="claude-pane signals-pane">
@@ -1016,6 +1081,7 @@
     const analystToggle = document.getElementById('analyst-toggle');
     const analystPanel = document.getElementById('analyst-panel');
     const analystStatus = document.getElementById('analyst-status');
+    const analystTitle = document.getElementById('analyst-title');
     const analystWindowLabel = document.getElementById('analyst-window-label');
     const bucketList = document.getElementById('bucket-list');
     const latestRefusals = document.getElementById('latest-refusals');
@@ -1028,6 +1094,12 @@
     const viewRenderedBtn = document.getElementById('view-rendered-btn');
     const viewRawBtn = document.getElementById('view-raw-btn');
     const copyOutputBtn = document.getElementById('copy-output');
+    const chartSelect = document.getElementById('chart-select');
+    const chartArea = document.getElementById('chart-area');
+    const chartsCard = document.getElementById('charts-card');
+    const chartCanvas = document.getElementById('refusal-chart');
+    const reasonBucketsBtn = document.getElementById('run-reason-buckets');
+    const reasonBucketsStatus = document.getElementById('reason-buckets-status');
     const modelMaxLabel = document.getElementById('model-max-label');
     const hoursInput = document.getElementById('hours-input');
     const daysInput = document.getElementById('days-input');
@@ -1090,6 +1162,237 @@
       return html;
     };
 
+    const clearChart = () => {
+      if (chartInstance) {
+        chartInstance.destroy();
+        chartInstance = null;
+      }
+    };
+
+  const renderChart = (type, data) => {
+    clearChart();
+    if (!chartCanvas || !data || !data.samples || !data.samples.length || type === 'none') {
+      if (chartArea) chartArea.classList.remove('active');
+      return;
+    }
+    if (chartArea) chartArea.classList.add('active');
+    const ctx = chartCanvas.getContext('2d');
+
+      const samples = data.samples || [];
+      const reasonBuckets = data.reasonBuckets || [];
+      const reasonAssignments = data.reasonAssignments || [];
+      const idToSample = new Map();
+      samples.forEach((s) => {
+        if (s.id) idToSample.set(s.id, s);
+      });
+      const toDomain = (email = '') => {
+        const m = String(email).toLowerCase().match(/@([^>]+)>?$/);
+        if (m && m[1]) return m[1];
+        const parts = String(email).split('@');
+        return parts[1] ? parts[1].toLowerCase() : '';
+      };
+
+      const commonOpts = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: true, labels: { color: '#e8ecf5' } },
+          tooltip: { mode: 'index', intersect: false }
+        },
+        scales: {
+          x: { ticks: { color: '#e8ecf5' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+          y: { ticks: { color: '#e8ecf5' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+        }
+      };
+
+      if (type === 'confidence-hist') {
+        const bins = [0, 0.2, 0.4, 0.6, 0.8, 1];
+        const counts = Array(bins.length).fill(0);
+        samples.forEach((s) => {
+          const c = s.confidence ?? 0;
+          const idx = bins.findIndex((b, i) => c >= b && c < (bins[i + 1] ?? 1.01));
+          const bucket = idx >= 0 ? idx : bins.length - 1;
+          counts[bucket] += 1;
+        });
+        chartInstance = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: ['0-0.2', '0.2-0.4', '0.4-0.6', '0.6-0.8', '0.8-1.0'],
+            datasets: [{ label: 'Refusals', data: counts.slice(0, 5), backgroundColor: '#41d6ff88', borderColor: '#41d6ff' }]
+          },
+          options: { ...commonOpts, plugins: { ...commonOpts.plugins, legend: { display: false } } }
+        });
+        return;
+      }
+
+      if (type === 'confidence-reason') {
+        const useClaude = reasonBuckets.length && reasonAssignments.length;
+        const reasonMap = new Map();
+        if (useClaude) {
+          reasonAssignments.forEach((a) => {
+            const key = a.bucket || 'Other';
+            const conf = a.confidence ?? idToSample.get(a.id)?.confidence ?? 0;
+            if (!reasonMap.has(key)) reasonMap.set(key, []);
+            reasonMap.get(key).push(conf);
+          });
+        } else {
+          samples.forEach((s) => {
+            const key = (s.reason || 'Unknown').slice(0, 60);
+            if (!reasonMap.has(key)) reasonMap.set(key, []);
+            reasonMap.get(key).push(s.confidence ?? 0);
+          });
+        }
+        const arr = Array.from(reasonMap.entries()).map(([label, vals]) => ({
+          label,
+          avg: vals.reduce((a, b) => a + b, 0) / vals.length,
+          count: vals.length
+        })).sort((a, b) => b.count - a.count).slice(0, 7);
+        chartInstance = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: arr.map((r) => r.label),
+            datasets: [{ label: 'Avg confidence', data: arr.map((r) => r.avg), backgroundColor: '#c084f588', borderColor: '#c084f5' }]
+          },
+          options: commonOpts
+        });
+        return;
+      }
+
+      if (type === 'time-heat') {
+        const grid = Array.from({ length: 7 }, () => Array(24).fill(0));
+        samples.forEach((s) => {
+          const ts = s.decided_at || 0;
+          if (!ts) return;
+          const d = new Date(ts);
+          const dow = d.getDay(); // 0 sun
+          const hr = d.getHours();
+          grid[dow][hr] += 1;
+        });
+        chartInstance = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: Array.from({ length: 24 }, (_, i) => `${i}:00`),
+            datasets: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => ({
+              label: day,
+              data: grid[idx],
+              stack: 'time',
+              backgroundColor: `hsla(${idx * 45},70%,60%,0.5)`
+            }))
+          },
+          options: { ...commonOpts, scales: { ...commonOpts.scales, x: { stacked: true, ticks: { color: '#e8ecf5' }, grid: { color: 'rgba(255,255,255,0.05)' } }, y: { stacked: true, ticks: { color: '#e8ecf5' } } } }
+        });
+        return;
+      }
+
+      if (type === 'reason-trend') {
+        const useClaude = reasonBuckets.length && reasonAssignments.length;
+        const topReasons = useClaude
+          ? reasonBuckets.map((b) => b.name).slice(0, 4)
+          : (data.top_reasons || []).slice(0, 3).map((r) => r.label);
+        const buckets = new Map();
+        const addPoint = (id, reasonLabel) => {
+          const sample = idToSample.get(id);
+          const ts = sample?.decided_at || 0;
+          if (!ts) return;
+          const d = new Date(ts);
+          const label = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')} ${String(d.getUTCHours()).padStart(2, '0')}:00`;
+          if (!buckets.has(label)) buckets.set(label, {});
+          const bucket = buckets.get(label);
+          if (topReasons.includes(reasonLabel)) {
+            bucket[reasonLabel] = (bucket[reasonLabel] || 0) + 1;
+          }
+        };
+
+        if (useClaude) {
+          reasonAssignments.forEach((a) => addPoint(a.id, a.bucket));
+        } else {
+          samples.forEach((s) => addPoint(s.id, (s.reason || '').slice(0, 60)));
+        }
+
+        const labels = Array.from(buckets.keys()).sort();
+        const datasets = topReasons.map((r, idx) => ({
+          label: r,
+          data: labels.map((l) => buckets.get(l)?.[r] || 0),
+          borderColor: `hsl(${idx * 60 + 30}, 80%, 60%)`,
+          backgroundColor: `hsla(${idx * 60 + 30}, 80%, 60%, 0.2)`,
+          fill: true,
+          tension: 0.2
+        }));
+        chartInstance = new Chart(ctx, {
+          type: 'line',
+          data: { labels, datasets },
+          options: commonOpts
+        });
+        return;
+      }
+
+      if (type === 'domain-bars') {
+        const counts = new Map();
+        samples.forEach((s) => {
+          const d = toDomain(s.from);
+          if (!d) return;
+          counts.set(d, (counts.get(d) || 0) + 1);
+        });
+        const arr = Array.from(counts.entries()).map(([label, count]) => ({ label, count }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 10);
+        chartInstance = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: arr.map((r) => r.label),
+            datasets: [{ label: 'Refusals', data: arr.map((r) => r.count), backgroundColor: '#41d6ff88', borderColor: '#41d6ff' }]
+          },
+          options: { ...commonOpts, indexAxis: 'y' }
+        });
+        return;
+      }
+
+      if (type === 'risk-mix') {
+        const flags = { attachments: 0, urls: 0, ip_urls: 0, mismatch: 0 };
+        samples.forEach((s) => {
+          const f = s.feature_flags || {};
+          flags.attachments += f.has_attachments ? 1 : 0;
+          flags.urls += f.has_urls ? 1 : 0;
+          flags.ip_urls += f.has_ip_based_urls ? 1 : 0;
+          flags.mismatch += f.has_mismatched_urls ? 1 : 0;
+        });
+        chartInstance = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: ['Attachments', 'URLs', 'IP URLs', 'Mismatched URLs'],
+            datasets: [{ label: 'Counts', data: [flags.attachments, flags.urls, flags.ip_urls, flags.mismatch], backgroundColor: '#22c55e88', borderColor: '#22c55e' }]
+          },
+          options: { ...commonOpts, plugins: { ...commonOpts.plugins, legend: { display: false } } }
+        });
+        return;
+      }
+
+      if (type === 'removed-sections') {
+        const counts = new Map();
+        samples.forEach((s) => {
+          const sections = s.removed_sections || [];
+          sections.forEach((sec) => {
+            const key = String(sec);
+            counts.set(key, (counts.get(key) || 0) + 1);
+          });
+        });
+        const arr = Array.from(counts.entries()).map(([label, count]) => ({ label, count }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 10);
+        chartInstance = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: arr.map((r) => r.label),
+            datasets: [{ label: 'Removed count', data: arr.map((r) => r.count), backgroundColor: '#f59e0b88', borderColor: '#f59e0b' }]
+          },
+          options: commonOpts
+        });
+        return;
+      }
+
+      // Fallback: hide chart
+      ensureChartVisible(false);
+    };
     const applyViewToggle = () => {
       const view = analystState.view;
       const showRendered = view === 'rendered';
@@ -1217,7 +1520,9 @@
       configEl.textContent = `Poll ${cfg.poll_interval_ms}ms · Conc ${cfg.max_llm_concurrency} · Queue ${cfg.max_llm_queue} · Dry ${cfg.dry_run} · ${svc}`;
     };
 
-    const analystState = { enabled: false, view: 'rendered', cfg: {} };
+const analystState = { enabled: false, view: 'rendered', cfg: {} };
+    let chartInstance = null;
+    let chartDataCache = null;
 
     const updateWindowLabel = () => {
       const hours = Number(hoursInput.value) || 0;
@@ -1300,6 +1605,7 @@
       ].filter(Boolean);
       
       topSignals.innerHTML = sections.length ? sections.join('') : '<div class="analyst-meta">No signals found</div>';
+      chartDataCache = { ...(chartDataCache || {}), ...analytics };
     };
 
     const renderLatestRefusals = (latest = []) => {
@@ -1339,7 +1645,7 @@
     };
 
     const loadRefusalAnalytics = async () => {
-      analystStatus.textContent = 'Loading...';
+      analystStatus.textContent = '';
       analystStatus.style.color = 'var(--muted)';
       updateWindowLabel();
       try {
@@ -1347,8 +1653,9 @@
         const res = await fetch(`/api/analytics/refusals?${params.toString()}`);
         const data = await res.json();
         const total = data.total || 0;
-        analystStatus.textContent = `Found ${total} refusals`;
-        analystStatus.style.color = 'var(--text)';
+        if (analystTitle) {
+          analystTitle.textContent = `Refusal Explorer (filtered ${total} refusals)`;
+        }
         
         // Auto-select model based on count
         const opusMax = analystState.cfg.analyst_max_items_opus || 200;
@@ -1363,9 +1670,11 @@
         renderTopSignals(data);
         renderLatestRefusals(data.latest || []);
         syncPaneHeights();
+        chartDataCache = { ...(chartDataCache || {}), ...data };
+        if (chartSelect) renderChart(chartSelect.value, chartDataCache);
       } catch (e) {
         console.error('Analytics fetch failed', e);
-        analystStatus.textContent = 'Failed to load';
+        analystStatus.textContent = 'Failed to load refusals';
         analystStatus.style.color = 'var(--danger)';
       }
     };
@@ -1449,6 +1758,11 @@
         applyViewToggle();
       });
 
+      chartSelect?.addEventListener('change', (e) => {
+        const val = e.target.value;
+        renderChart(val, chartDataCache);
+      });
+
       document.querySelectorAll('[data-step-hours]').forEach((btn) => {
         btn.addEventListener('click', () => {
           const step = Number(btn.getAttribute('data-step-hours')) || 0;
@@ -1488,7 +1802,62 @@
         }
       });
 
+      reasonBucketsBtn?.addEventListener('click', async () => {
+        if (!chartDataCache || !chartDataCache.samples || !chartDataCache.samples.length) {
+          if (reasonBucketsStatus) reasonBucketsStatus.textContent = 'Load refusals first';
+          return;
+        }
+        if (reasonBucketsStatus) reasonBucketsStatus.textContent = 'Bucketing...';
+        const hoursVal = Math.max(1, Math.min(Number(hoursInput.value) || 24, 24 * 60));
+        const daysVal = Math.max(0, Math.min(Number(daysInput.value) || 0, 60));
+        const filters = {};
+        if (reasonFilter.value) filters.reason_includes = reasonFilter.value;
+        if (subjectFilter.value) filters.subject_includes = subjectFilter.value;
+        if (fromFilter.value) filters.from_includes = fromFilter.value;
+        if (domainFilter.value) filters.domain_includes = domainFilter.value;
+        if (minConf.value) filters.min_confidence = minConf.value;
+        if (maxConf.value) filters.max_confidence = maxConf.value;
+        if (removedSection.value) filters.removed_section = removedSection.value;
+        if (hasAttachments.checked) filters.has_attachments = true;
+        if (hasUrls.checked) filters.has_urls = true;
+        if (hasIpUrls.checked) filters.has_ip_based_urls = true;
+        if (hasMismatch.checked) filters.has_mismatched_urls = true;
+        const limit = updateModelMaxLabel();
+        const payload = {
+          model: modelSelect.value,
+          max_items: limit,
+          hours: hoursVal,
+          days: daysVal,
+          filters
+        };
+        try {
+          const res = await fetch('/api/analysis/reasons', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const data = await res.json();
+          if (!res.ok || data.ok === false) {
+            const msg = data.error || 'Reason bucketing failed';
+            if (reasonBucketsStatus) reasonBucketsStatus.textContent = msg;
+            return;
+          }
+          chartDataCache = {
+            ...(chartDataCache || {}),
+            reasonBuckets: data.buckets || [],
+            reasonAssignments: data.assignments || []
+          };
+          if (reasonBucketsStatus)
+            reasonBucketsStatus.textContent = `Buckets ready (${(data.buckets || []).length})`;
+          renderChart(chartSelect?.value || 'none', chartDataCache);
+        } catch (err) {
+          console.error('Reason bucketing failed', err);
+          if (reasonBucketsStatus) reasonBucketsStatus.textContent = 'Reason bucketing failed';
+        }
+      });
+
       applyViewToggle();
+      if (chartArea) chartArea.classList.remove('active');
     };
 
     let latestConfig = {};
@@ -1515,5 +1884,6 @@
     setInterval(refresh, 2000);
   </script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </body>
 </html>

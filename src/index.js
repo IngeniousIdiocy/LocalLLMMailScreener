@@ -833,7 +833,19 @@ const buildRefusalAnalytics = (decisions, filters = {}) => {
     top_reasons: topCounts(filtered, (d) => (d.reason || '').slice(0, 120)),
     top_senders: topCounts(filtered, (d) => (d.from || '').toLowerCase()),
     top_domains: topCounts(filtered, (d) => domainFromEmail(d.from)),
-    latest: filtered.slice(-latestLimit).reverse().map(summarizeDecision)
+    latest: filtered.slice(-latestLimit).reverse().map(summarizeDecision),
+    samples: filtered.map((d) => ({
+      id: d.id,
+      confidence: d.confidence,
+      reason: d.reason,
+      decided_at: d.decided_at,
+      from: d.from,
+      feature_flags: d.feature_flags || {},
+      removed_sections:
+        (d.feature_flags && d.feature_flags.removed_sections) ||
+        (d.trim_stats && d.trim_stats.removed_sections) ||
+        []
+    }))
   };
 };
 
@@ -872,6 +884,51 @@ const buildClaudePrompt = ({ cases = [], windowHours, filtersSummary }) => {
 - patterns: concise patterns you see in refusals
 - next_rules: 2-4 precise prompt/rule tweaks to reduce false refusals without weakening phishing handling`;
   return [header, filterLine, body, ask].filter(Boolean).join('\n\n');
+};
+
+const buildReasonBucketsPrompt = ({ items = [], windowHours, filtersSummary, maxBuckets = 8 }) => {
+  const header = `Bucket the following notify=false email refusals into ${maxBuckets} concise categories. Use short, human-readable names. Then assign each item to a bucket.`;
+  const filterLine = filtersSummary ? `Filters: ${filtersSummary}` : '';
+  const body = items
+    .map((c, idx) => {
+      const flags = c.feature_flags || {};
+      const dom = domainFromEmail(c.from);
+      return [
+        `Item ${idx + 1}: id=${c.id}`,
+        `Conf=${c.confidence ?? 'n/a'}, domain=${dom || 'unknown'}, flags: attachments=${flags.has_attachments ? 'y' : 'n'}, urls=${flags.has_urls ? 'y' : 'n'}, ip_urls=${flags.has_ip_based_urls ? 'y' : 'n'}, mismatch_urls=${flags.has_mismatched_urls ? 'y' : 'n'}`,
+        `Reason: ${c.reason || '—'}`
+      ].join('\n');
+    })
+    .join('\n\n');
+  const ask = `Return ONLY valid JSON with this shape:
+{
+  "buckets": [ { "name": "short label", "description": "1-line detail", "count": 0, "avg_confidence": 0 } ],
+  "assignments": [ { "id": "<id>", "bucket": "<bucket name>", "confidence": 0 } ]
+}
+Rules:
+- Max ${maxBuckets} buckets.
+- Use the exact bucket names in assignments.
+- If unsure, still assign to the closest bucket; avoid "other" unless necessary.`;
+  return [header, filterLine, body, ask].filter(Boolean).join('\n\n');
+};
+
+const parseJsonFromText = (text) => {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      const candidate = text.slice(start, end + 1);
+      try {
+        return JSON.parse(candidate);
+      } catch (err2) {
+        return null;
+      }
+    }
+    return null;
+  }
 };
 
 const startServer = (ctx) => {
@@ -970,6 +1027,95 @@ const startServer = (ctx) => {
         window_hours: hours,
         filters: filters,
         result: text || '(empty response)'
+      });
+    } catch (err) {
+      const apiMsg = err.response?.data?.error?.message || err.response?.data?.message;
+      res.status(502).json({
+        ok: false,
+        error: apiMsg || err.message || 'Anthropic request failed'
+      });
+    }
+  });
+
+  app.post('/api/analysis/reasons', async (req, res) => {
+    const apiKey = ctx.config.anthropicApiKey;
+    if (!apiKey) {
+      return res.status(400).json({ ok: false, error: 'Missing Anthropic API key' });
+    }
+    const body = req.body || {};
+    const modelChoice = String(body.model || 'sonnet').toLowerCase();
+    const model =
+      modelChoice === 'opus' ? ctx.config.anthropicModelOpus : ctx.config.anthropicModelSonnet;
+    const maxItemsCap =
+      modelChoice === 'opus' ? ctx.config.analystMaxItemsOpus : ctx.config.analystMaxItemsSonnet;
+    const maxItems = clampNumber(body.max_items, 1, maxItemsCap, maxItemsCap);
+    const filters = { ...(body.filters || {}), hours: body.hours, days: body.days };
+    const current = ctx.stateManager.getState();
+    const decisions = current.recent_decisions || [];
+    const hours = parseTimeWindowHours(filters);
+    const filtered = filterRefusals(decisions, { ...filters, hours });
+    const selected = filtered.slice(-maxItems);
+    if (!selected.length) {
+      return res.json({ ok: true, model, count: 0, buckets: [], assignments: [] });
+    }
+
+    const filterSummaryParts = [];
+    if (filters.reason_includes) filterSummaryParts.push(`reason~"${filters.reason_includes}"`);
+    if (filters.subject_includes) filterSummaryParts.push(`subject~"${filters.subject_includes}"`);
+    if (filters.from_includes) filterSummaryParts.push(`from~"${filters.from_includes}"`);
+    if (filters.domain_includes) filterSummaryParts.push(`domain~"${filters.domain_includes}"`);
+    if (filters.min_confidence != null) filterSummaryParts.push(`min_conf=${filters.min_confidence}`);
+    if (filters.max_confidence != null) filterSummaryParts.push(`max_conf=${filters.max_confidence}`);
+    if (filters.has_attachments != null) filterSummaryParts.push(`attachments=${filters.has_attachments}`);
+    if (filters.has_urls != null) filterSummaryParts.push(`urls=${filters.has_urls}`);
+    if (filters.has_ip_based_urls != null) filterSummaryParts.push(`ip_urls=${filters.has_ip_based_urls}`);
+    if (filters.has_mismatched_urls != null) filterSummaryParts.push(`mismatch_urls=${filters.has_mismatched_urls}`);
+    if (filters.removed_section) filterSummaryParts.push(`removed=${filters.removed_section}`);
+    const filterSummary = filterSummaryParts.join(', ');
+
+    const maxBuckets = clampNumber(body.max_buckets, 3, 10, 8);
+    const prompt = buildReasonBucketsPrompt({
+      items: selected,
+      windowHours: hours,
+      filtersSummary: filterSummary,
+      maxBuckets
+    });
+
+    const payload = {
+      model,
+      max_tokens: clampNumber(body.max_tokens, 500, 4000, ctx.config.analystMaxOutputTokens),
+      temperature: 0,
+      system: 'You are a concise classifier. Return strict JSON with bucket definitions and assignments.',
+      messages: [{ role: 'user', content: prompt }]
+    };
+
+    try {
+      const apiRes = await axios.post('https://api.anthropic.com/v1/messages', payload, {
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        timeout: ctx.config.analystTimeoutMs
+      });
+      const contentArr = apiRes.data?.content || [];
+      const text = contentArr
+        .map((c) => c.text)
+        .filter(Boolean)
+        .join('\n')
+        .trim();
+      const parsed = parseJsonFromText(text);
+      if (!parsed) {
+        return res.status(502).json({ ok: false, error: 'Claude returned non-JSON bucket data' });
+      }
+      const buckets = Array.isArray(parsed.buckets) ? parsed.buckets : [];
+      const assignments = Array.isArray(parsed.assignments) ? parsed.assignments : [];
+      res.json({
+        ok: true,
+        model,
+        count: selected.length,
+        window_hours: hours,
+        buckets,
+        assignments
       });
     } catch (err) {
       const apiMsg = err.response?.data?.error?.message || err.response?.data?.message;

@@ -645,6 +645,33 @@ DRY_RUN=1 npm run test:injection -- --category=parseltongue
 
 ---
 
+### Analyst Mode (dashboard)
+
+Purpose: deep-dive refusals to spot false negatives and over-filtering. Everything is opt-in and manual—no background refreshes or automatic Claude calls.
+
+What you can do
+- Time & filters: Hours/Days window, reason/subject/from/domain contains, confidence min/max, removed sections, URL/attachment/IP/mismatch flags.
+- Refusal Explorer: “Load refusals” populates:
+  - Top Signals (top reasons/senders/domains + hourly buckets)
+  - Latest Refusals list with confidence/tags and Gmail links
+  - Charts (select one): confidence distribution, confidence by reason, hour×weekday heat, top-reason trends over time, sender/domain bars, URL/attachment mix, removed-sections impact. Charts stay hidden until you pick one.
+- Claude (on demand only):
+  - “Run Claude analysis” — summarizes current filtered refusals, surfaces borderline cases, patterns, and rule tweaks.
+  - “Bucket reasons with Claude” — clusters the freeform LLM “reason” texts into bucket labels for charts (e.g., confidence-by-reason, reason-trend). Falls back to raw reasons if not run.
+  - Privacy: these calls send refusal metadata (reason text, from/domain, confidence, URL/attachment flags, removed sections, timestamps) to Anthropic. No bodies are sent, but this still exposes email metadata; enable only if you accept that tradeoff.
+
+Key environment settings for Analyst Mode
+- `RECENT_LIMIT` (default 5000): how many recent decisions are retained for dashboard/analytics.
+- Anthropic access:
+  - `ANTHROPIC_API_KEY` (required for Claude features)
+  - `ANTHROPIC_MODEL_OPUS` / `ANTHROPIC_MODEL_SONNET` (model ids)
+  - `ANALYST_MAX_ITEMS_OPUS` / `ANALYST_MAX_ITEMS_SONNET` (cap on items sent per request; bucket/analysis uses these)
+  - `ANALYST_MAX_OUTPUT_TOKENS` (cap on Claude response tokens)
+  - `ANALYST_TIMEOUT_MS` (Claude request timeout)
+- Chart/analysis behavior is driven by the current filters and these caps; nothing runs unless you click.
+
+---
+
 ### License
 
 This project is licensed under the [MIT License](LICENSE).
