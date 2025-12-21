@@ -415,6 +415,10 @@ Manually tweaking the system prompt is tedious and error-prone. Fix one FP, acci
 
 The tool maintains a full history of attempts, backs up each prompt version, and can resume interrupted sessions. When you're happy with results, copy the tuned prompt to production with a single command.
 
+Recent run: total misclassifications dropped from 23 to 0 while keeping all Parseltongue injection tests green (red X = aborted attempts that failed Parseltongue).
+
+![Prompt tuning trajectory](https://raw.githubusercontent.com/IngeniousIdiocy/LocalLLMMailScreener/main/prompt-tuning/errors_chart.svg)
+
 #### Quick Start
 
 ```bash
