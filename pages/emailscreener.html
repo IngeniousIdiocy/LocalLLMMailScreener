@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EmailScreener</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --accent: #58a6ff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 3rem 1.5rem;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    h1 {
+      font-size: 2.25rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, var(--accent), #a371f7);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .tagline {
+      color: var(--text-muted);
+      font-size: 1.1rem;
+    }
+    nav {
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      margin: 2rem 0;
+      padding: 1rem;
+      background: var(--surface);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    nav a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    nav a:hover {
+      text-decoration: underline;
+    }
+    section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    h2 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      color: var(--accent);
+    }
+    h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin: 1.5rem 0 0.75rem 0;
+      color: var(--text);
+    }
+    p { margin-bottom: 1rem; }
+    p:last-child { margin-bottom: 0; }
+    ul {
+      margin: 1rem 0;
+      padding-left: 1.5rem;
+    }
+    li {
+      margin-bottom: 0.5rem;
+      color: var(--text-muted);
+    }
+    li strong {
+      color: var(--text);
+    }
+    .highlight {
+      background: rgba(88, 166, 255, 0.1);
+      border-left: 3px solid var(--accent);
+      padding: 1rem;
+      border-radius: 0 6px 6px 0;
+      margin: 1rem 0;
+    }
+    footer {
+      text-align: center;
+      padding-top: 2rem;
+      color: var(--text-muted);
+      font-size: 0.875rem;
+    }
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>EmailScreener</h1>
+      <p class="tagline">Personal email screening with local LLM processing</p>
+    </header>
+
+    <nav>
+      <a href="emailscreener.html">Home</a>
+      <a href="emailscreener-privacy.html">Privacy Policy</a>
+      <a href="emailscreener-terms.html">Terms of Service</a>
+    </nav>
+
+    <section>
+      <h2>About This Application</h2>
+      <p>
+        EmailScreener is a personal productivity tool that monitors a Gmail inbox and uses 
+        a locally-hosted large language model (LLM) to identify important or time-sensitive 
+        messages. When an urgent email is detected, the application sends a notification 
+        to the user's mobile device.
+      </p>
+      <div class="highlight">
+        This is a single-user, personal-use application. It is not offered as a service 
+        to the public.
+      </div>
+      
+      <h3>How It Works</h3>
+      <ul>
+        <li><strong>Email Monitoring:</strong> Periodically checks Gmail inbox for new messages</li>
+        <li><strong>Local Analysis:</strong> Uses a self-hosted LLM to evaluate message urgency</li>
+        <li><strong>Smart Notifications:</strong> Sends alerts only for genuinely important emails</li>
+        <li><strong>Privacy-First:</strong> All processing happens locally; no data leaves your network</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Contact</h2>
+      <p>
+        For questions about this application:<br>
+        <a href="mailto:mark@missionfocused.ai">mark@missionfocused.ai</a>
+      </p>
+    </section>
+
+    <footer>
+      <p>© 2024 EmailScreener</p>
+      <p style="margin-top: 0.5rem;">
+        <a href="https://missionfocused.ai">missionfocused.ai</a>
+      </p>
+    </footer>
+  </div>
+</body>
+</html>
+
