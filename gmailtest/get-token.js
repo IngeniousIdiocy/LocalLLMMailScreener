@@ -1,5 +1,7 @@
 require('dotenv').config();
 const readline = require('readline');
+const fs = require('fs');
+const path = require('path');
 const { google } = require('googleapis');
 
 const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI } = process.env;
@@ -53,8 +55,36 @@ rl.question('\n3) Paste the code or full redirected URL here: ', async input => 
       process.exit(1);
     }
 
-    console.log('\nSuccess! Add this to gmailtest/.env as GOOGLE_REFRESH_TOKEN:');
-    console.log(tokens.refresh_token);
+    const refreshToken = tokens.refresh_token;
+
+    // Validate token by making a test Gmail API call
+    console.log('\nValidating token with Gmail API...');
+    oAuth2Client.setCredentials(tokens);
+    const gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
+    try {
+      const profile = await gmail.users.getProfile({ userId: 'me' });
+      console.log(`Token verified! Connected to: ${profile.data.emailAddress}`);
+    } catch (validateErr) {
+      console.error('Token validation failed - Gmail API rejected the token:', validateErr.message);
+      console.error('Token was NOT saved. Please try again.');
+      process.exit(1);
+    }
+
+    // Update main project .env
+    const mainEnvPath = path.join(__dirname, '..', '.env');
+    if (fs.existsSync(mainEnvPath)) {
+      let envContent = fs.readFileSync(mainEnvPath, 'utf8');
+      if (envContent.match(/^GMAIL_REFRESH_TOKEN=.*/m)) {
+        envContent = envContent.replace(/^GMAIL_REFRESH_TOKEN=.*/m, `GMAIL_REFRESH_TOKEN=${refreshToken}`);
+      } else {
+        envContent += `\nGMAIL_REFRESH_TOKEN=${refreshToken}\n`;
+      }
+      fs.writeFileSync(mainEnvPath, envContent);
+      console.log('\nSuccess! Updated GMAIL_REFRESH_TOKEN in main project .env');
+    } else {
+      console.log('\nSuccess! Main .env not found. Add this to your .env as GMAIL_REFRESH_TOKEN:');
+      console.log(refreshToken);
+    }
   } catch (err) {
     console.error('Failed to exchange code for tokens:', err.message);
     if (err.response?.data) {

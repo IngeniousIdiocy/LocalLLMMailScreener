@@ -997,6 +997,23 @@
       box-sizing: border-box;
     }
 
+    .gpu-legend {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: -5px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .gpu-legend-block {
+      width: 12px;
+      height: 12px;
+      background: rgba(65, 214, 255, 0.9);
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
     @media (max-width: 640px) {
       .gpu-current-stats {
         flex-wrap: wrap;
@@ -1052,6 +1069,7 @@
           <canvas id="gpu-chart"></canvas>
           <div class="gpu-x-axis" id="gpu-x-axis"></div>
         </div>
+        <div class="gpu-legend" id="gpu-legend"></div>
       </div>
     </div>
 
@@ -1226,6 +1244,7 @@
     const gpuCurrentStats = document.getElementById('gpu-current-stats');
     const gpuChartCanvas = document.getElementById('gpu-chart');
     const gpuXAxis = document.getElementById('gpu-x-axis');
+    const gpuLegend = document.getElementById('gpu-legend');
     const analystToggle = document.getElementById('analyst-toggle');
     const analystPanel = document.getElementById('analyst-panel');
     const analystStatus = document.getElementById('analyst-status');
@@ -1832,6 +1851,21 @@
         xLabels.push(labelTime.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }));
       }
       gpuXAxis.innerHTML = xLabels.map(l => `<span>${l}</span>`).join('');
+
+      // Update legend with time per block
+      const timePerColumnMs = chart.timePerColumn;
+      const totalSeconds = Math.round(timePerColumnMs / 1000);
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      let timeLabel;
+      if (minutes > 0 && seconds > 0) {
+        timeLabel = `${minutes} minute${minutes !== 1 ? 's' : ''} and ${seconds} second${seconds !== 1 ? 's' : ''}`;
+      } else if (minutes > 0) {
+        timeLabel = `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+      } else {
+        timeLabel = `${seconds} second${seconds !== 1 ? 's' : ''}`;
+      }
+      gpuLegend.innerHTML = `<span class="gpu-legend-block"></span> = peak GPU utilization over ${timeLabel}`;
     };
 
 const analystState = { enabled: false, view: 'rendered', cfg: {} };
