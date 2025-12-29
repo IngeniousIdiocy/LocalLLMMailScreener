@@ -1270,6 +1270,11 @@ const startServer = (ctx) => {
     }
   });
 
+  app.get('/gpu_chart_math.js', (req, res) => {
+    const filePath = path.join(__dirname, 'gpu_chart_math.js');
+    res.sendFile(filePath);
+  });
+
   app.get('/', (req, res) => {
     const filePath = path.join(__dirname, 'dashboard.html');
     res.sendFile(filePath);
