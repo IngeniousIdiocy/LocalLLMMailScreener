@@ -1039,6 +1039,172 @@
         grid-template-columns: 1fr;
       }
     }
+
+    /* Gmail Token Refresh Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal {
+      background: var(--bg);
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+      padding: 24px;
+      max-width: 520px;
+      width: 90%;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .modal-title {
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 24px;
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+    }
+
+    .modal-close:hover {
+      color: var(--text);
+    }
+
+    .modal-body {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .modal-step {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .modal-step-label {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .modal-step-content {
+      font-size: 14px;
+    }
+
+    .auth-url-box {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--glass-border);
+      border-radius: 8px;
+      padding: 12px;
+      word-break: break-all;
+      font-size: 12px;
+      font-family: monospace;
+      color: var(--accent);
+      max-height: 80px;
+      overflow-y: auto;
+    }
+
+    .auth-url-box a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .auth-url-box a:hover {
+      text-decoration: underline;
+    }
+
+    .modal-input {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--glass-border);
+      border-radius: 8px;
+      padding: 12px;
+      color: var(--text);
+      font-size: 13px;
+      font-family: var(--font);
+      width: 100%;
+      resize: vertical;
+      min-height: 60px;
+    }
+
+    .modal-input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .modal-status {
+      font-size: 13px;
+      padding: 10px;
+      border-radius: 8px;
+      display: none;
+    }
+
+    .modal-status.visible {
+      display: block;
+    }
+
+    .modal-status.success {
+      background: rgba(34, 197, 94, 0.15);
+      color: var(--success);
+    }
+
+    .modal-status.error {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--danger);
+    }
+
+    .modal-status.info {
+      background: rgba(65, 214, 255, 0.15);
+      color: var(--accent);
+    }
+
+    .card-footer {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--glass-border);
+    }
+
+    .btn.fix-gmail {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid var(--danger);
+      color: var(--danger);
+      font-size: 11px;
+      padding: 5px 12px;
+    }
+
+    .btn.fix-gmail:hover {
+      background: rgba(239, 68, 68, 0.25);
+      box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+    }
   </style>
 </head>
 <body>
@@ -1233,6 +1399,31 @@
     </div>
   </div>
 
+  <!-- Gmail Token Refresh Modal -->
+  <div class="modal-overlay" id="gmail-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">Refresh Gmail Token</span>
+        <button class="modal-close" id="gmail-modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-step">
+          <span class="modal-step-label">Step 1: Click the link below to authorize Gmail access</span>
+          <div class="auth-url-box" id="gmail-auth-url">Loading...</div>
+        </div>
+        <div class="modal-step">
+          <span class="modal-step-label">Step 2: After authorizing, you'll be redirected to localhost (it may show an error). Copy the full URL from your browser's address bar and paste it below:</span>
+          <textarea class="modal-input" id="gmail-code-input" placeholder="Paste the redirect URL or authorization code here..."></textarea>
+        </div>
+        <div class="modal-status" id="gmail-modal-status"></div>
+        <div class="modal-actions">
+          <button class="btn" id="gmail-submit-code">Submit &amp; Validate</button>
+          <button class="btn secondary" id="gmail-modal-cancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script type="module">
     import { computeGpuChartColumns, GPU_CHART_CONSTANTS } from './gpu_chart_math.js';
     const healthCards = document.getElementById('health-cards');
@@ -1272,6 +1463,13 @@
     const modelMaxLabel = document.getElementById('model-max-label');
     const hoursInput = document.getElementById('hours-input');
     const daysInput = document.getElementById('days-input');
+    const gmailModal = document.getElementById('gmail-modal');
+    const gmailAuthUrl = document.getElementById('gmail-auth-url');
+    const gmailCodeInput = document.getElementById('gmail-code-input');
+    const gmailModalStatus = document.getElementById('gmail-modal-status');
+    const gmailSubmitCode = document.getElementById('gmail-submit-code');
+    const gmailModalClose = document.getElementById('gmail-modal-close');
+    const gmailModalCancel = document.getElementById('gmail-modal-cancel');
     const reasonFilter = document.getElementById('reason-filter');
     const subjectFilter = document.getElementById('subject-filter');
     const fromFilter = document.getElementById('from-filter');
@@ -1660,17 +1858,21 @@
       healthCards.innerHTML = items.map((item) => {
         const h = health[item.key] || {};
         const ok = !!h.ok;
-        const errorLine = h.last_error 
-          ? `<div class="card-meta" style="margin-top:6px;color:var(--danger);">Error: ${h.last_error}</div>` 
+        const errorLine = h.last_error
+          ? `<div class="card-meta" style="margin-top:6px;color:var(--danger);">Error: ${h.last_error}</div>`
           : '';
-        const latencyLine = item.key === 'llm' && h.avg_latency_ms 
-          ? `<div class="card-meta">Avg latency: ${h.avg_latency_ms} ms</div>` 
+        const latencyLine = item.key === 'llm' && h.avg_latency_ms
+          ? `<div class="card-meta">Avg latency: ${h.avg_latency_ms} ms</div>`
           : '';
         const modelLine =
           item.key === 'llm' && cfg.llm_model
             ? `<div class="card-meta">Model: ${cfg.llm_model}</div>`
             : '';
-        
+        // Show "Fix Gmail" button in footer when Gmail is failing
+        const fixGmailFooter = item.key === 'gmail' && !ok
+          ? `<div class="card-footer"><button class="btn fix-gmail" id="fix-gmail-btn">Fix Gmail Token</button></div>`
+          : '';
+
         return `
           <div class="card">
             <div class="card-header">
@@ -1681,9 +1883,16 @@
             ${latencyLine}
             ${modelLine}
             ${errorLine}
+            ${fixGmailFooter}
           </div>
         `;
       }).join('');
+
+      // Attach click handler to Fix Gmail button if it exists
+      const fixBtn = document.getElementById('fix-gmail-btn');
+      if (fixBtn) {
+        fixBtn.addEventListener('click', openGmailModal);
+      }
     };
 
     const renderStats = (stats) => {
@@ -2090,6 +2299,82 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
         claudeOutputRaw.textContent = 'Claude call failed';
       }
     };
+
+    // Gmail Token Refresh Modal Functions
+    const showModalStatus = (message, type = 'info') => {
+      gmailModalStatus.textContent = message;
+      gmailModalStatus.className = `modal-status visible ${type}`;
+    };
+
+    const hideModalStatus = () => {
+      gmailModalStatus.className = 'modal-status';
+    };
+
+    const openGmailModal = async () => {
+      gmailModal.classList.add('active');
+      gmailCodeInput.value = '';
+      hideModalStatus();
+      gmailAuthUrl.innerHTML = 'Loading authorization URL...';
+
+      try {
+        const res = await fetch('/api/gmail/auth-url');
+        const data = await res.json();
+        if (data.ok && data.auth_url) {
+          gmailAuthUrl.innerHTML = `<a href="${data.auth_url}" target="_blank">${data.auth_url}</a>`;
+        } else {
+          gmailAuthUrl.innerHTML = `<span style="color:var(--danger);">Error: ${data.error || 'Failed to get auth URL'}</span>`;
+        }
+      } catch (err) {
+        gmailAuthUrl.innerHTML = `<span style="color:var(--danger);">Error: ${err.message}</span>`;
+      }
+    };
+
+    const closeGmailModal = () => {
+      gmailModal.classList.remove('active');
+      hideModalStatus();
+    };
+
+    const submitGmailCode = async () => {
+      const code = gmailCodeInput.value.trim();
+      if (!code) {
+        showModalStatus('Please paste the authorization code or redirect URL', 'error');
+        return;
+      }
+
+      showModalStatus('Validating token...', 'info');
+      gmailSubmitCode.disabled = true;
+
+      try {
+        const res = await fetch('/api/gmail/exchange-token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code })
+        });
+        const data = await res.json();
+
+        if (data.ok) {
+          showModalStatus(`Success! ${data.message}`, 'success');
+          // Auto-close after success
+          setTimeout(() => {
+            closeGmailModal();
+          }, 2500);
+        } else {
+          showModalStatus(`Error: ${data.error}`, 'error');
+        }
+      } catch (err) {
+        showModalStatus(`Error: ${err.message}`, 'error');
+      } finally {
+        gmailSubmitCode.disabled = false;
+      }
+    };
+
+    // Wire up modal events
+    gmailModalClose?.addEventListener('click', closeGmailModal);
+    gmailModalCancel?.addEventListener('click', closeGmailModal);
+    gmailSubmitCode?.addEventListener('click', submitGmailCode);
+    gmailModal?.addEventListener('click', (e) => {
+      if (e.target === gmailModal) closeGmailModal();
+    });
 
     const wireAnalystControls = () => {
       analystToggle?.addEventListener('click', () => {

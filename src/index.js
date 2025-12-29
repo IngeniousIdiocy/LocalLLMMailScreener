@@ -7,6 +7,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import axios from 'axios';
 
+import { google } from 'googleapis';
 import { createGmailClient, listMessages, fetchRawMessage, parseRawEmail, gmailLinkFor } from './gmail.js';
 import { callLLM, healthCheckLLM } from './llm.js';
 import { trimEmailForLLM } from './email_trim.js';
@@ -1267,6 +1268,104 @@ const startServer = (ctx) => {
         ok: false,
         error: apiMsg || err.message || 'Anthropic request failed'
       });
+    }
+  });
+
+  // Gmail OAuth token refresh endpoints
+  app.get('/api/gmail/auth-url', (req, res) => {
+    const clientId = ctx.config.gmailClientId;
+    const clientSecret = ctx.config.gmailClientSecret;
+    if (!clientId || !clientSecret) {
+      return res.status(400).json({ ok: false, error: 'Missing Gmail OAuth credentials in config' });
+    }
+    const oAuth2Client = new google.auth.OAuth2(clientId, clientSecret, 'http://localhost');
+    const authUrl = oAuth2Client.generateAuthUrl({
+      access_type: 'offline',
+      prompt: 'consent',
+      scope: ['https://www.googleapis.com/auth/gmail.readonly']
+    });
+    res.json({ ok: true, auth_url: authUrl });
+  });
+
+  app.post('/api/gmail/exchange-token', async (req, res) => {
+    const clientId = ctx.config.gmailClientId;
+    const clientSecret = ctx.config.gmailClientSecret;
+    if (!clientId || !clientSecret) {
+      return res.status(400).json({ ok: false, error: 'Missing Gmail OAuth credentials in config' });
+    }
+
+    const { code } = req.body || {};
+    if (!code) {
+      return res.status(400).json({ ok: false, error: 'Missing authorization code' });
+    }
+
+    // Extract code from URL if user pasted full redirect URL
+    let authCode = code.trim();
+    const codeMatch = authCode.match(/[?&]code=([^&]+)/);
+    if (codeMatch) {
+      authCode = decodeURIComponent(codeMatch[1]);
+    }
+
+    const oAuth2Client = new google.auth.OAuth2(clientId, clientSecret, 'http://localhost');
+
+    try {
+      const { tokens } = await oAuth2Client.getToken(authCode);
+      if (!tokens.refresh_token) {
+        return res.status(400).json({
+          ok: false,
+          error: 'No refresh token returned. Revoke app access in Google Account settings and try again.'
+        });
+      }
+
+      // Validate the token by making a test Gmail API call
+      oAuth2Client.setCredentials(tokens);
+      const gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
+      const profile = await gmail.users.getProfile({ userId: 'me' });
+      const emailAddress = profile.data.emailAddress;
+
+      // Update the .env file
+      const envPath = path.join(__dirname, '..', '.env');
+      if (!fs.existsSync(envPath)) {
+        return res.status(500).json({ ok: false, error: 'Main .env file not found' });
+      }
+
+      let envContent = fs.readFileSync(envPath, 'utf8');
+      const refreshToken = tokens.refresh_token;
+
+      if (envContent.match(/^GMAIL_REFRESH_TOKEN=.*/m)) {
+        envContent = envContent.replace(/^GMAIL_REFRESH_TOKEN=.*/m, `GMAIL_REFRESH_TOKEN=${refreshToken}`);
+      } else {
+        envContent += `\nGMAIL_REFRESH_TOKEN=${refreshToken}\n`;
+      }
+      fs.writeFileSync(envPath, envContent);
+
+      // Update the running config and recreate Gmail client
+      ctx.config.gmailRefreshToken = refreshToken;
+      ctx.gmailClient = createGmailClient({
+        clientId: ctx.config.gmailClientId,
+        clientSecret: ctx.config.gmailClientSecret,
+        refreshToken: refreshToken
+      });
+
+      // Clear any Gmail error state
+      ctx.stateManager.clearGmailError();
+
+      logEvent('GMAIL', { token_refresh: 'success', email: emailAddress });
+
+      // Trigger an immediate Gmail poll to verify and update status
+      pollGmail(ctx).catch((err) => {
+        logEvent('GMAIL', { immediate_poll: 'fail', error: err.message });
+      });
+
+      res.json({
+        ok: true,
+        email: emailAddress,
+        message: `Token validated and saved. Connected to ${emailAddress}`
+      });
+    } catch (err) {
+      const errorMsg = err.response?.data?.error_description || err.message || 'Token exchange failed';
+      logEvent('GMAIL', { token_refresh: 'fail', error: errorMsg });
+      res.status(400).json({ ok: false, error: errorMsg });
     }
   });
 

@@ -136,6 +136,11 @@ export const createStateManager = ({
     state.alerts.gmail_down_at ||= Date.now();
   };
 
+  const clearGmailError = () => {
+    state.stats.gmail.last_error = '';
+    state.alerts.gmail_down_at = 0;
+  };
+
   const setLLMOk = (latencyMs) => {
     const now = Date.now();
     state.stats.llm.last_ok_at = now;
@@ -213,6 +218,7 @@ export const createStateManager = ({
     revertGmailPoll,
     setGmailOk,
     setGmailError,
+    clearGmailError,
     setLLMOk,
     setLLMError,
     setLLMHealthCheck,
