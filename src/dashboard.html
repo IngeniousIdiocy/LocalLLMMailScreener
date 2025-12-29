@@ -1215,7 +1215,9 @@
     </div>
   </div>
 
-  <script>
+  <script type="module" src="/gpu_chart_logic.js"></script>
+  <script type="module">
+    import { computeGpuChartGrid } from './gpu_chart_logic.js';
     const healthCards = document.getElementById('health-cards');
     const statsGrid = document.getElementById('stats-grid');
     const notificationsGrid = document.getElementById('notifications-grid');
@@ -1770,25 +1772,10 @@
       const currentBlock = gpuData.current_block || {};
       const blockDurationMs = gpuData.block_duration_ms || 15000;
 
-      // Combine history with current in-progress block
-      const allBlocks = [...history];
-      if (currentBlock.start_time) {
-        allBlocks.push({
-          timestamp: currentBlock.start_time,
-          peak: currentBlock.peak_gpu_utilization || 0,
-          inProgress: true
-        });
-      }
-
-      // Sort by timestamp ascending (oldest first)
-      allBlocks.sort((a, b) => a.timestamp - b.timestamp);
-
-      // Get canvas context and dimensions
       const ctx = gpuChartCanvas.getContext('2d');
       const dpr = window.devicePixelRatio || 1;
       const rect = gpuChartCanvas.getBoundingClientRect();
 
-      // Set canvas size accounting for device pixel ratio
       gpuChartCanvas.width = rect.width * dpr;
       gpuChartCanvas.height = rect.height * dpr;
       ctx.scale(dpr, dpr);
@@ -1796,67 +1783,25 @@
       const width = rect.width;
       const height = rect.height;
 
-      // Clear canvas
       ctx.clearRect(0, 0, width, height);
 
-      // Constants
-      const LEVELS = 15;
-      const STEP_PCT = 100 / LEVELS; // ~6.67% per level
-      const GAP = 2; // 2px gaps
-      const SIXTY_MINUTES_MS = 60 * 60 * 1000;
-      const RAW_BLOCKS = Math.ceil(SIXTY_MINUTES_MS / blockDurationMs); // 240 for 15s
+      const chart = computeGpuChartGrid({
+        history,
+        currentBlock,
+        blockDurationMs,
+        width,
+        height,
+        now: Date.now()
+      });
 
-      // Step 1: Square size from height (ceiling - chart may be slightly taller)
-      const squareSize = Math.max(2, Math.ceil((height - (LEVELS - 1) * GAP) / LEVELS));
+      const { columns, layout, xLabels } = chart;
+      const { squareSize, actualWidth, actualHeight, offsetX, offsetY, gap, levels } = layout;
+      const STEP_PCT = 100 / levels;
 
-      // Step 2: Number of columns from width (floor - chart will be slightly narrower)
-      const numColumns = Math.max(1, Math.floor((width - GAP) / (squareSize + GAP)));
-
-      // Step 3: Actual chart dimensions
-      const actualHeight = LEVELS * squareSize + (LEVELS - 1) * GAP;
-      const actualWidth = numColumns * squareSize + (numColumns - 1) * GAP;
-
-      // Step 4: Center horizontally, align to bottom vertically
-      const offsetX = Math.floor((width - actualWidth) / 2);
-      const offsetY = height - actualHeight; // align bottom (may be negative, that's OK)
-
-      // Step 5: Time per column (always show exactly 60 minutes)
-      const timePerColumn = SIXTY_MINUTES_MS / numColumns;
-
-      // Step 6: Aggregate blocks by MAX peak
-      const now = Date.now();
-      const aggregated = [];
-
-      for (let col = 0; col < numColumns; col++) {
-        const colEndMs = col * timePerColumn;
-        const colStartMs = (col + 1) * timePerColumn;
-
-        let maxPeak = 0;
-        let hasData = false;
-        let isInProgress = false;
-
-        allBlocks.forEach(block => {
-          const ageMs = now - block.timestamp;
-          if (ageMs >= colEndMs && ageMs < colStartMs && ageMs <= SIXTY_MINUTES_MS) {
-            hasData = true;
-            maxPeak = Math.max(maxPeak, block.peak || 0);
-            if (block.inProgress) isInProgress = true;
-          }
-        });
-
-        if (hasData) {
-          aggregated.push({ column: col, peak: maxPeak, inProgress: isInProgress });
-        }
-      }
-
-      // Step 7: Draw perfect squares - column 0 = newest = rightmost
-      aggregated.forEach(({ column, peak, inProgress }) => {
-        const x = offsetX + actualWidth - (column + 1) * (squareSize + GAP) + GAP;
-
-        // Number of squares to fill (minimum 1 to show "idle")
+      columns.forEach(({ column, peak, inProgress }) => {
+        const x = offsetX + actualWidth - (column + 1) * (squareSize + gap) + gap;
         const filledLevels = Math.max(1, Math.round(peak / STEP_PCT));
 
-        // Color based on peak
         let color;
         if (inProgress) {
           color = 'rgba(65, 214, 255, 0.4)';
@@ -1870,20 +1815,12 @@
 
         ctx.fillStyle = color;
 
-        // Draw perfect squares from bottom up
         for (let level = 0; level < filledLevels; level++) {
-          const y = offsetY + actualHeight - (level + 1) * (squareSize + GAP) + GAP;
+          const y = offsetY + actualHeight - (level + 1) * (squareSize + gap) + gap;
           ctx.fillRect(x, y, squareSize, squareSize);
         }
       });
 
-      // Update X-axis labels (10-minute increments)
-      const xLabels = [];
-      for (let i = 0; i <= 6; i++) {
-        const timeAgo = i * 10 * 60 * 1000;
-        const labelTime = new Date(now - (60 * 60 * 1000) + timeAgo);
-        xLabels.push(labelTime.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }));
-      }
       gpuXAxis.innerHTML = xLabels.map(l => `<span>${l}</span>`).join('');
     };
 

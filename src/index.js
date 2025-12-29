@@ -1078,6 +1078,9 @@ const parseJsonFromText = (text) => {
 const startServer = (ctx) => {
   const app = express();
   app.use(express.json());
+  app.get('/gpu_chart_logic.js', (req, res) => {
+    res.sendFile(path.join(__dirname, 'gpu_chart_logic.js'));
+  });
   app.use((req, res, next) => {
     const isDashboardPath = req.path === '/' || req.path.startsWith('/api');
     if (isDashboardPath && !ctx.dashboardFirstLogged) {
