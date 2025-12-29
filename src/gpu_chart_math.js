@@ -16,7 +16,8 @@ export function computeGpuChartColumns({
   history = [],
   currentBlock = null,
   blockDurationMs = 15000,
-  nowMs = Date.now()
+  nowMs = Date.now(),
+  alignToColumns = true
 }) {
   const { LEVELS, GAP, WINDOW_MS } = GPU_CHART_CONSTANTS;
 
@@ -33,6 +34,12 @@ export function computeGpuChartColumns({
   const offsetY = safeHeight - actualHeight;
   const timePerColumn = WINDOW_MS / numColumns;
 
+  // Align window end to the column grid to avoid jitter as "now" advances
+  const windowEnd = alignToColumns
+    ? Math.ceil(nowMs / timePerColumn) * timePerColumn
+    : nowMs;
+  const windowStart = windowEnd - WINDOW_MS;
+
   // Build combined block list (history + current)
   const blocks = [...(history || [])];
   if (currentBlock?.start_time) {
@@ -44,8 +51,6 @@ export function computeGpuChartColumns({
   }
   blocks.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
 
-  const windowEnd = nowMs;
-  const windowStart = windowEnd - WINDOW_MS;
   const aggregated = [];
 
   for (let col = 0; col < numColumns; col++) {

@@ -65,3 +65,37 @@ test('marks every overlapped column as in-progress for the current block', () =>
   assert.ok(inProgressCols.includes(0), 'latest column should reflect in-progress data');
   assert.ok(inProgressCols.length >= 1, 'in-progress block should mark at least one column');
 });
+
+test('keeps column assignment stable for small time drift (prevents flicker)', () => {
+  const width = 340;
+  const height = 160;
+  const blockDurationMs = 15_000;
+  const now = 1_000_000;
+
+  // timePerColumn determined by geometry; we want two blocks straddling the boundary
+  const first = computeGpuChartColumns({ width, height, history: [], nowMs: now, blockDurationMs });
+  const timePerColumn = first.timePerColumn;
+
+  // One block just before the boundary, one just after
+  const nearNewer = { timestamp: now - (timePerColumn - 1_000), peak: 90 };
+  const nearOlder = { timestamp: now - (timePerColumn + 1_000), peak: 10 };
+  const history = [nearOlder, nearNewer];
+
+  const chartNow = computeGpuChartColumns({ width, height, history, nowMs: now, blockDurationMs });
+  const chartLater = computeGpuChartColumns({
+    width,
+    height,
+    history,
+    nowMs: now + 2_000, // drift smaller than a column
+    blockDurationMs
+  });
+
+  const peaksByCol = (chart) =>
+    chart.aggregated.reduce((acc, { column, peak }) => ({ ...acc, [column]: peak }), {});
+
+  assert.deepStrictEqual(
+    peaksByCol(chartNow),
+    peaksByCol(chartLater),
+    'column peaks should be stable under small time drift'
+  );
+});
