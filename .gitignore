@@ -1,6 +1,7 @@
 node_modules
 npm-cache
 data/state*.json
+data/gpu_history.json
 .env
 
 # Prompt tuning personal data and runtime files
