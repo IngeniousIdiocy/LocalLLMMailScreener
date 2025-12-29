@@ -142,3 +142,45 @@ export const cleanupFile = async (filePath) => {
     /* ignore */
   }
 };
+
+export const createGpuMock = (overrides = {}) => ({
+  start: () => {},
+  stop: () => {},
+  getCurrentStats: () => ({
+    gpu_utilization: 25.0,
+    memory_used: 8589934592,
+    memory_total: 17179869184,
+    memory_display: '8.00GB / 16.00GB',
+    timestamp: Date.now(),
+    ...(overrides.current || {})
+  }),
+  getCurrentBlock: () => ({
+    start_time: Date.now() - 15000,
+    peak_gpu_utilization: 30.0,
+    sample_count: 3,
+    ...(overrides.current_block || {})
+  }),
+  getHistory: () => overrides.history || [],
+  getSnapshot: () => ({
+    enabled: true,
+    gpu_name: 'Mock GPU',
+    block_duration_ms: 30000,
+    sample_interval_ms: 5000,
+    current: {
+      gpu_utilization: 25.0,
+      memory_used: 8589934592,
+      memory_total: 17179869184,
+      memory_display: '8.00GB / 16.00GB',
+      timestamp: Date.now(),
+      ...(overrides.current || {})
+    },
+    current_block: {
+      start_time: Date.now() - 15000,
+      peak_gpu_utilization: 30.0,
+      sample_count: 3,
+      ...(overrides.current_block || {})
+    },
+    history: overrides.history || [],
+    ...overrides
+  })
+});

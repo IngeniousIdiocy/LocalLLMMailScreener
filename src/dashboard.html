@@ -908,6 +908,105 @@
     }
 
 
+    /* GPU Panel */
+    .gpu-section .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .gpu-header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .gpu-name {
+      font-size: 12px;
+      color: var(--muted);
+      font-family: monospace;
+    }
+
+    .gpu-current-stats {
+      display: flex;
+      gap: 20px;
+      font-size: 14px;
+    }
+
+    .gpu-stat {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+
+    .gpu-stat-label {
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    .gpu-stat-value {
+      font-weight: 700;
+      font-size: 18px;
+    }
+
+    .gpu-stat-value.high {
+      color: var(--danger);
+    }
+
+    .gpu-stat-value.warn {
+      color: var(--warn);
+    }
+
+    .gpu-chart-container {
+      background: rgba(0,0,0,0.25);
+      border: 1px solid var(--glass-border);
+      border-radius: 10px;
+      padding: 12px;
+      height: 160px;
+      position: relative;
+    }
+
+    .gpu-chart-wrapper {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+
+    .gpu-x-axis {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 20px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    #gpu-chart {
+      width: 100%;
+      height: calc(100% - 24px);
+      display: block;
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+
+    @media (max-width: 640px) {
+      .gpu-current-stats {
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      .gpu-stat-value {
+        font-size: 16px;
+      }
+    }
+
     /* Responsive */
     @media (max-width: 900px) {
       .health-row {
@@ -937,6 +1036,23 @@
         <span class="config-info" id="config"></span>
       </div>
       <div class="stats-grid" id="stats-grid"></div>
+    </div>
+
+    <!-- GPU Utilization Panel (hidden if data unavailable) -->
+    <div class="card gpu-section" id="gpu-section" style="display:none;">
+      <div class="card-header">
+        <div class="gpu-header-left">
+          <span class="card-title">GPU Utilization</span>
+          <span class="gpu-name" id="gpu-name"></span>
+        </div>
+        <div class="gpu-current-stats" id="gpu-current-stats"></div>
+      </div>
+      <div class="gpu-chart-container">
+        <div class="gpu-chart-wrapper">
+          <canvas id="gpu-chart"></canvas>
+          <div class="gpu-x-axis" id="gpu-x-axis"></div>
+        </div>
+      </div>
     </div>
 
     <div class="card notifications-section">
@@ -1104,6 +1220,11 @@
     const statsGrid = document.getElementById('stats-grid');
     const notificationsGrid = document.getElementById('notifications-grid');
     const configEl = document.getElementById('config');
+    const gpuSection = document.getElementById('gpu-section');
+    const gpuNameEl = document.getElementById('gpu-name');
+    const gpuCurrentStats = document.getElementById('gpu-current-stats');
+    const gpuChartCanvas = document.getElementById('gpu-chart');
+    const gpuXAxis = document.getElementById('gpu-x-axis');
     const analystToggle = document.getElementById('analyst-toggle');
     const analystPanel = document.getElementById('analyst-panel');
     const analystStatus = document.getElementById('analyst-status');
@@ -1613,6 +1734,159 @@
       configEl.textContent = `Poll ${cfg.poll_interval_ms}ms · Conc ${cfg.max_llm_concurrency} · Queue ${cfg.max_llm_queue} · Dry ${cfg.dry_run} · ${svc}`;
     };
 
+    const renderGpu = (gpuData) => {
+      if (!gpuData || !gpuData.enabled) {
+        gpuSection.style.display = 'none';
+        return;
+      }
+
+      gpuSection.style.display = 'block';
+      gpuNameEl.textContent = gpuData.gpu_name || 'GPU';
+
+      // Current stats
+      const current = gpuData.current || {};
+      const util = current.gpu_utilization;
+      const hasUtil = util !== null && util !== undefined;
+      const utilClass = hasUtil ? (util >= 80 ? 'high' : util >= 50 ? 'warn' : '') : '';
+      const utilDisplay = hasUtil ? `${util.toFixed(1)}%` : '—';
+
+      gpuCurrentStats.innerHTML = `
+        <div class="gpu-stat">
+          <span class="gpu-stat-label">GPU</span>
+          <span class="gpu-stat-value ${utilClass}">${utilDisplay}</span>
+        </div>
+        <div class="gpu-stat">
+          <span class="gpu-stat-label">Memory</span>
+          <span class="gpu-stat-value">${current.memory_display || '—'}</span>
+        </div>
+      `;
+
+      // Render chart
+      renderGpuChart(gpuData);
+    };
+
+    const renderGpuChart = (gpuData) => {
+      const history = gpuData.history || [];
+      const currentBlock = gpuData.current_block || {};
+      const blockDurationMs = gpuData.block_duration_ms || 15000;
+
+      // Combine history with current in-progress block
+      const allBlocks = [...history];
+      if (currentBlock.start_time) {
+        allBlocks.push({
+          timestamp: currentBlock.start_time,
+          peak: currentBlock.peak_gpu_utilization || 0,
+          inProgress: true
+        });
+      }
+
+      // Sort by timestamp ascending (oldest first)
+      allBlocks.sort((a, b) => a.timestamp - b.timestamp);
+
+      // Get canvas context and dimensions
+      const ctx = gpuChartCanvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const rect = gpuChartCanvas.getBoundingClientRect();
+
+      // Set canvas size accounting for device pixel ratio
+      gpuChartCanvas.width = rect.width * dpr;
+      gpuChartCanvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+
+      const width = rect.width;
+      const height = rect.height;
+
+      // Clear canvas
+      ctx.clearRect(0, 0, width, height);
+
+      // Constants
+      const LEVELS = 15;
+      const STEP_PCT = 100 / LEVELS; // ~6.67% per level
+      const GAP = 2; // 2px gaps
+      const SIXTY_MINUTES_MS = 60 * 60 * 1000;
+      const RAW_BLOCKS = Math.ceil(SIXTY_MINUTES_MS / blockDurationMs); // 240 for 15s
+
+      // Step 1: Square size from height (ceiling - chart may be slightly taller)
+      const squareSize = Math.max(2, Math.ceil((height - (LEVELS - 1) * GAP) / LEVELS));
+
+      // Step 2: Number of columns from width (floor - chart will be slightly narrower)
+      const numColumns = Math.max(1, Math.floor((width - GAP) / (squareSize + GAP)));
+
+      // Step 3: Actual chart dimensions
+      const actualHeight = LEVELS * squareSize + (LEVELS - 1) * GAP;
+      const actualWidth = numColumns * squareSize + (numColumns - 1) * GAP;
+
+      // Step 4: Center horizontally, align to bottom vertically
+      const offsetX = Math.floor((width - actualWidth) / 2);
+      const offsetY = height - actualHeight; // align bottom (may be negative, that's OK)
+
+      // Step 5: Time per column (always show exactly 60 minutes)
+      const timePerColumn = SIXTY_MINUTES_MS / numColumns;
+
+      // Step 6: Aggregate blocks by MAX peak
+      const now = Date.now();
+      const aggregated = [];
+
+      for (let col = 0; col < numColumns; col++) {
+        const colEndMs = col * timePerColumn;
+        const colStartMs = (col + 1) * timePerColumn;
+
+        let maxPeak = 0;
+        let hasData = false;
+        let isInProgress = false;
+
+        allBlocks.forEach(block => {
+          const ageMs = now - block.timestamp;
+          if (ageMs >= colEndMs && ageMs < colStartMs && ageMs <= SIXTY_MINUTES_MS) {
+            hasData = true;
+            maxPeak = Math.max(maxPeak, block.peak || 0);
+            if (block.inProgress) isInProgress = true;
+          }
+        });
+
+        if (hasData) {
+          aggregated.push({ column: col, peak: maxPeak, inProgress: isInProgress });
+        }
+      }
+
+      // Step 7: Draw perfect squares - column 0 = newest = rightmost
+      aggregated.forEach(({ column, peak, inProgress }) => {
+        const x = offsetX + actualWidth - (column + 1) * (squareSize + GAP) + GAP;
+
+        // Number of squares to fill (minimum 1 to show "idle")
+        const filledLevels = Math.max(1, Math.round(peak / STEP_PCT));
+
+        // Color based on peak
+        let color;
+        if (inProgress) {
+          color = 'rgba(65, 214, 255, 0.4)';
+        } else if (peak >= 80) {
+          color = 'rgba(239, 68, 68, 0.9)';
+        } else if (peak >= 50) {
+          color = 'rgba(245, 158, 11, 0.9)';
+        } else {
+          color = 'rgba(65, 214, 255, 0.9)';
+        }
+
+        ctx.fillStyle = color;
+
+        // Draw perfect squares from bottom up
+        for (let level = 0; level < filledLevels; level++) {
+          const y = offsetY + actualHeight - (level + 1) * (squareSize + GAP) + GAP;
+          ctx.fillRect(x, y, squareSize, squareSize);
+        }
+      });
+
+      // Update X-axis labels (10-minute increments)
+      const xLabels = [];
+      for (let i = 0; i <= 6; i++) {
+        const timeAgo = i * 10 * 60 * 1000;
+        const labelTime = new Date(now - (60 * 60 * 1000) + timeAgo);
+        xLabels.push(labelTime.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }));
+      }
+      gpuXAxis.innerHTML = xLabels.map(l => `<span>${l}</span>`).join('');
+    };
+
 const analystState = { enabled: false, view: 'rendered', cfg: {} };
     let chartInstance = null;
     let chartDataCache = null;
@@ -1982,6 +2256,7 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
         const cfg = data.config_sanitized || {};
         renderHealth(data.health || {}, cfg);
         renderStats(data.stats || {});
+        renderGpu(data.gpu);
         renderNotifications(data.recent_sends || []);
         if (data.config_sanitized) renderConfig(cfg);
       } catch (e) {

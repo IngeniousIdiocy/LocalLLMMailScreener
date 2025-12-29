@@ -13,6 +13,7 @@ import { trimEmailForLLM } from './email_trim.js';
 import { createTwilioClient, sendSms, checkTwilioCredentials } from './twilio.js';
 import { sendPushover, checkPushoverCredentials } from './pushover.js';
 import { createStateManager } from './state.js';
+import { createGpuMonitor, isGpuAvailable } from './gpu.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const log = (...args) => {
@@ -88,7 +89,12 @@ export const buildConfig = (env = process.env) => ({
   pushoverToken: env.PUSHOVER_TOKEN || env.PUSHOVER_API_TOKEN,
   pushoverUser: env.PUSHOVER_USER,
   pushoverDevice: env.PUSHOVER_DEVICE,
-  logTimezone: env.LOG_TIMEZONE || 'UTC'
+  logTimezone: env.LOG_TIMEZONE || 'UTC',
+  // GPU monitoring
+  gpuEnabled: env.GPU_ENABLED !== 'false',
+  gpuSampleIntervalMs: parseInt(env.GPU_SAMPLE_INTERVAL_MS, 10) || 5000,
+  gpuBlockDurationMs: parseInt(env.GPU_BLOCK_DURATION_MS, 10) || 30000,
+  gpuHistoryBlocks: parseInt(env.GPU_HISTORY_BLOCKS, 10) || 240
 });
 
 const createGmailSummaryTracker = (intervalMinRaw) => {
@@ -813,6 +819,7 @@ const buildStatusSnapshot = (ctx) => {
   const health = buildHealth(ctx, stats);
   const llmTps = computeRecentTps(current.recent_decisions || []);
   const statsWithDerived = { ...stats, llm_tps: llmTps };
+  const gpuData = ctx.gpuMonitor?.getSnapshot() || null;
   return {
     health,
     stats: statsWithDerived,
@@ -837,7 +844,8 @@ const buildStatusSnapshot = (ctx) => {
       analyst_max_items_sonnet: ctx.config.analystMaxItemsSonnet,
       analyst_max_output_tokens: ctx.config.analystMaxOutputTokens,
       analyst_timeout_ms: ctx.config.analystTimeoutMs
-    }
+    },
+    gpu: gpuData
   };
 };
 
@@ -1303,6 +1311,15 @@ export const startApp = async (overrides = {}) => {
       recentLimit: config.recentLimit
     });
 
+  // Initialize GPU monitor (returns null in test mode or unsupported platforms)
+  const gpuMonitor = overrides.gpuMonitor !== undefined
+    ? overrides.gpuMonitor
+    : (config.gpuEnabled ? createGpuMonitor({
+        sampleIntervalMs: config.gpuSampleIntervalMs,
+        blockDurationMs: config.gpuBlockDurationMs,
+        historyBlocks: config.gpuHistoryBlocks
+      }) : null);
+
   const ctx = {
     config,
     gmailClient,
@@ -1310,6 +1327,7 @@ export const startApp = async (overrides = {}) => {
     pushoverSender,
     pushoverValidator,
     stateManager,
+    gpuMonitor,
     llmQueue: null,
     outageAlertInFlight: null,
     callLLM: overrides.llmCaller || callLLM,
@@ -1362,12 +1380,20 @@ export const startApp = async (overrides = {}) => {
     startPolling(ctx);
   }
 
+  // Start GPU monitoring
+  if (gpuMonitor) {
+    gpuMonitor.start();
+  }
+
   return {
     app,
     server,
     ctx,
     stop: async () => {
       stopPolling(ctx);
+      if (ctx.gpuMonitor) {
+        ctx.gpuMonitor.stop();
+      }
       if (server) {
         await new Promise((resolve) => server.close(resolve));
       }

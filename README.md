@@ -380,6 +380,12 @@ Visit `http://localhost:3000/` for the dashboard. JSON status is at `GET /api/st
 - `LOG_TIMEZONE` (IANA timezone for logs and LLM time context, e.g. `America/New_York`; default `UTC`)
 - `LLM_*` (base URL/model/temperature/timeouts), `SYSTEM_PROMPT_PATH` (default `./data/system_prompt.txt`)
 
+**GPU Monitoring (Apple Silicon only):**
+- `GPU_ENABLED` (default `true`; set `false` to disable)
+- `GPU_SAMPLE_INTERVAL_MS` (default 5000)
+- `GPU_BLOCK_DURATION_MS` (default 15000)
+- `GPU_HISTORY_BLOCKS` (default 240)
+
 ---
 
 ### System Prompt
@@ -646,6 +652,38 @@ DRY_RUN=1 npm run test:injection -- --category=parseltongue
 **Test fixtures:** `test/fixtures/raw/injection_*.eml` and `test/fixtures/prompt_injection_cases.json`
 
 **Note:** These tests evaluate your LLM's behavior, not the application code. Different models will have varying resistance to prompt injection — Parseltongue-style encoding attacks may bypass models that resist plaintext injections. Running these tests after changing your system prompt or switching models is recommended.
+
+---
+
+### GPU Utilization Monitoring (Apple Silicon only)
+
+The dashboard includes an optional GPU utilization panel that tracks system memory and GPU usage over time. This feature is **specific to Apple Silicon Macs** (M1/M2/M3/M4) and will silently disable itself on other platforms.
+
+#### Features
+
+- **Real-time stats**: Current GPU utilization percentage and unified memory usage
+- **Peak tracking**: Records the maximum GPU utilization observed during each time block (default 15 seconds)
+- **Apple-style history chart**: Stepped bar chart showing last 60 minutes with:
+  - 15 discrete height levels (values rounded to nearest ~6.67%)
+  - X-axis with 10-minute increment time labels
+  - Color coding: Cyan (< 50%), Orange (50-80%), Red (> 80%)
+- **Persistence**: Last 60 minutes of history survives app restarts (stored in `./data/gpu_history.json`)
+- **Graceful degradation**: If GPU data cannot be collected, the panel simply doesn't appear—no errors, no broken UI
+
+#### Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GPU_ENABLED` | `true` | Set to `false` to disable GPU monitoring |
+| `GPU_SAMPLE_INTERVAL_MS` | `5000` | Milliseconds between samples |
+| `GPU_BLOCK_DURATION_MS` | `15000` | Duration of each history block |
+| `GPU_HISTORY_BLOCKS` | `240` | Max blocks to retain (240 @ 15s = 60 min) |
+
+#### Notes
+
+- **No additional dependencies**: Uses Node.js built-in `os` module for memory stats and `ioreg` for GPU data
+- **Test-safe**: GPU monitoring is automatically disabled when `NODE_ENV=test`
+- **Platform support**: macOS with Apple Silicon only; silently disabled elsewhere
 
 ---
 
