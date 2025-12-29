@@ -992,7 +992,7 @@
       width: 100%;
       height: calc(100% - 24px);
       display: block;
-      border: 1px solid rgba(255, 255, 255, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.8);
       border-radius: 4px;
       box-sizing: border-box;
     }
@@ -1803,13 +1803,13 @@
         // Number of squares to fill (minimum 1 to show "idle")
         const filledLevels = Math.max(1, Math.round(peak / STEP_PCT));
 
-        // Color based on peak
+        // Color based on number of filled blocks (1-8: blue, 9-13: orange, 14-15: red)
         let color;
         if (inProgress) {
           color = 'rgba(65, 214, 255, 0.4)';
-        } else if (peak >= 80) {
+        } else if (filledLevels >= 13) {
           color = 'rgba(239, 68, 68, 0.9)';
-        } else if (peak >= 50) {
+        } else if (filledLevels >= 9) {
           color = 'rgba(245, 158, 11, 0.9)';
         } else {
           color = 'rgba(65, 214, 255, 0.9)';
@@ -1829,7 +1829,7 @@
       for (let i = 0; i <= 6; i++) {
         const timeAgo = i * 10 * 60 * 1000;
         const labelTime = new Date(now - WINDOW_MS + timeAgo);
-        xLabels.push(labelTime.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }));
+        xLabels.push(labelTime.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }));
       }
       gpuXAxis.innerHTML = xLabels.map(l => `<span>${l}</span>`).join('');
     };
