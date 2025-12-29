@@ -1264,22 +1264,38 @@
       </div>
 
       <div class="analyst-controls">
-        <!-- Row 1: Time, Model, Load button, Checkboxes -->
+        <!-- Row 1: Time Range, Model, Load button, Checkboxes -->
         <div class="control-group-row">
           <div class="control">
-            <label>Hours</label>
+            <label>From (hours ago)</label>
             <div class="control-row">
-              <button class="btn secondary small" data-step-hours="-1">−</button>
-              <input type="number" id="hours-input" min="1" max="336" value="24" />
-              <button class="btn secondary small" data-step-hours="1">+</button>
+              <button class="btn secondary small" data-step-start-hours="-1">−</button>
+              <input type="number" id="start-hours-input" min="0" max="336" value="0" />
+              <button class="btn secondary small" data-step-start-hours="1">+</button>
             </div>
           </div>
           <div class="control">
-            <label>Days</label>
+            <label>From (days)</label>
             <div class="control-row">
-              <button class="btn secondary small" data-step-days="-1">−</button>
-              <input type="number" id="days-input" min="0" max="30" value="0" />
-              <button class="btn secondary small" data-step-days="1">+</button>
+              <button class="btn secondary small" data-step-start-days="-1">−</button>
+              <input type="number" id="start-days-input" min="0" max="30" value="1" />
+              <button class="btn secondary small" data-step-start-days="1">+</button>
+            </div>
+          </div>
+          <div class="control">
+            <label>To (hours ago)</label>
+            <div class="control-row">
+              <button class="btn secondary small" data-step-end-hours="-1">−</button>
+              <input type="number" id="end-hours-input" min="0" max="336" value="0" />
+              <button class="btn secondary small" data-step-end-hours="1">+</button>
+            </div>
+          </div>
+          <div class="control">
+            <label>To (days)</label>
+            <div class="control-row">
+              <button class="btn secondary small" data-step-end-days="-1">−</button>
+              <input type="number" id="end-days-input" min="0" max="30" value="0" />
+              <button class="btn secondary small" data-step-end-days="1">+</button>
             </div>
           </div>
           <div class="control">
@@ -1461,8 +1477,10 @@
     const chartBackBtn = document.getElementById('chart-back');
     const chartRangeLabel = document.getElementById('chart-range-label');
     const modelMaxLabel = document.getElementById('model-max-label');
-    const hoursInput = document.getElementById('hours-input');
-    const daysInput = document.getElementById('days-input');
+    const startHoursInput = document.getElementById('start-hours-input');
+    const startDaysInput = document.getElementById('start-days-input');
+    const endHoursInput = document.getElementById('end-hours-input');
+    const endDaysInput = document.getElementById('end-days-input');
     const gmailModal = document.getElementById('gmail-modal');
     const gmailAuthUrl = document.getElementById('gmail-auth-url');
     const gmailCodeInput = document.getElementById('gmail-code-input');
@@ -2084,10 +2102,21 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
     const MIN_BIN_WIDTH = 0.01;
 
     const updateWindowLabel = () => {
-      const hours = Number(hoursInput.value) || 0;
-      const days = Number(daysInput.value) || 0;
-      const totalHours = hours + days * 24;
-      analystWindowLabel.textContent = `${totalHours || 24}h window (${hours}h + ${days}d)`;
+      const startHoursRaw = Number(startHoursInput.value);
+      const startDaysRaw = Number(startDaysInput.value);
+      const endHoursRaw = Number(endHoursInput.value);
+      const endDaysRaw = Number(endDaysInput.value);
+      const startHours = Number.isFinite(startHoursRaw) ? startHoursRaw : 0;
+      const startDays = Number.isFinite(startDaysRaw) ? startDaysRaw : 0;
+      const endHours = Number.isFinite(endHoursRaw) ? endHoursRaw : 0;
+      const endDays = Number.isFinite(endDaysRaw) ? endDaysRaw : 0;
+      const fromTotal = Math.max(1, startHours + startDays * 24);
+      const toTotal = endHours + endDays * 24;
+      if (toTotal === 0) {
+        analystWindowLabel.textContent = `Last ${fromTotal}h`;
+      } else {
+        analystWindowLabel.textContent = `${fromTotal}h → ${toTotal}h ago`;
+      }
     };
 
     const updateModelMaxLabel = () => {
@@ -2101,9 +2130,19 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
 
     const buildFilterParams = () => {
       const params = new URLSearchParams();
-      const hoursVal = Math.max(1, Math.min(Number(hoursInput.value) || 24, 24 * 60));
-      const daysVal = Math.max(0, Math.min(Number(daysInput.value) || 0, 60));
-      params.set('hours', hoursVal + daysVal * 24);
+      const startHoursRaw = Number(startHoursInput.value);
+      const startDaysRaw = Number(startDaysInput.value);
+      const endHoursRaw = Number(endHoursInput.value);
+      const endDaysRaw = Number(endDaysInput.value);
+      const startHoursVal = Number.isFinite(startHoursRaw) ? Math.max(0, Math.min(startHoursRaw, 24 * 60)) : 0;
+      const startDaysVal = Number.isFinite(startDaysRaw) ? Math.max(0, Math.min(startDaysRaw, 60)) : 0;
+      const endHoursVal = Number.isFinite(endHoursRaw) ? Math.max(0, Math.min(endHoursRaw, 24 * 60)) : 0;
+      const endDaysVal = Number.isFinite(endDaysRaw) ? Math.max(0, Math.min(endDaysRaw, 60)) : 0;
+      // Ensure at least 1 hour total for start (the older boundary)
+      const startTotal = Math.max(1, startHoursVal + startDaysVal * 24);
+      const endTotal = endHoursVal + endDaysVal * 24;
+      params.set('start_hours', startTotal);
+      params.set('end_hours', endTotal);
       if (reasonFilter.value) params.set('reason_includes', reasonFilter.value);
       if (subjectFilter.value) params.set('subject_includes', subjectFilter.value);
       if (fromFilter.value) params.set('from_includes', fromFilter.value);
@@ -2251,8 +2290,14 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
       claudeOutputRaw.textContent = 'Running analysis...';
       applyViewToggle();
       updateWindowLabel();
-      const hoursVal = Math.max(1, Math.min(Number(hoursInput.value) || 24, 24 * 60));
-      const daysVal = Math.max(0, Math.min(Number(daysInput.value) || 0, 60));
+      const startHoursRaw = Number(startHoursInput.value);
+      const startDaysRaw = Number(startDaysInput.value);
+      const endHoursRaw = Number(endHoursInput.value);
+      const endDaysRaw = Number(endDaysInput.value);
+      const startHoursVal = Number.isFinite(startHoursRaw) ? Math.max(0, Math.min(startHoursRaw, 24 * 60)) : 0;
+      const startDaysVal = Number.isFinite(startDaysRaw) ? Math.max(0, Math.min(startDaysRaw, 60)) : 0;
+      const endHoursVal = Number.isFinite(endHoursRaw) ? Math.max(0, Math.min(endHoursRaw, 24 * 60)) : 0;
+      const endDaysVal = Number.isFinite(endDaysRaw) ? Math.max(0, Math.min(endDaysRaw, 60)) : 0;
       const filters = {};
       if (reasonFilter.value) filters.reason_includes = reasonFilter.value;
       if (subjectFilter.value) filters.subject_includes = subjectFilter.value;
@@ -2269,8 +2314,8 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
       const payload = {
         model: modelSelect.value,
         max_items: limit,
-        hours: hoursVal,
-        days: daysVal,
+        start_hours: Math.max(1, startHoursVal + startDaysVal * 24),
+        end_hours: endHoursVal + endDaysVal * 24,
         filters
       };
       try {
@@ -2407,10 +2452,10 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
         renderChart(chartSelect?.value || 'none', chartDataCache);
       });
 
-      document.querySelectorAll('[data-step-hours]').forEach((btn) => {
+      document.querySelectorAll('[data-step-start-hours]').forEach((btn) => {
         btn.addEventListener('click', () => {
-          const step = Number(btn.getAttribute('data-step-hours')) || 0;
-          hoursInput.value = Math.max(1, Math.min((Number(hoursInput.value) || 0) + step, 24 * 60));
+          const step = Number(btn.getAttribute('data-step-start-hours')) || 0;
+          startHoursInput.value = Math.max(0, Math.min((Number(startHoursInput.value) || 0) + step, 24 * 60));
           updateWindowLabel();
           chartDrillStack = [];
           if (chartBackBtn) chartBackBtn.disabled = true;
@@ -2418,10 +2463,32 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
         });
       });
 
-      document.querySelectorAll('[data-step-days]').forEach((btn) => {
+      document.querySelectorAll('[data-step-start-days]').forEach((btn) => {
         btn.addEventListener('click', () => {
-          const step = Number(btn.getAttribute('data-step-days')) || 0;
-          daysInput.value = Math.max(0, Math.min((Number(daysInput.value) || 0) + step, 60));
+          const step = Number(btn.getAttribute('data-step-start-days')) || 0;
+          startDaysInput.value = Math.max(0, Math.min((Number(startDaysInput.value) || 0) + step, 60));
+          updateWindowLabel();
+          chartDrillStack = [];
+          if (chartBackBtn) chartBackBtn.disabled = true;
+          if (chartRangeLabel) chartRangeLabel.textContent = '';
+        });
+      });
+
+      document.querySelectorAll('[data-step-end-hours]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const step = Number(btn.getAttribute('data-step-end-hours')) || 0;
+          endHoursInput.value = Math.max(0, Math.min((Number(endHoursInput.value) || 0) + step, 24 * 60));
+          updateWindowLabel();
+          chartDrillStack = [];
+          if (chartBackBtn) chartBackBtn.disabled = true;
+          if (chartRangeLabel) chartRangeLabel.textContent = '';
+        });
+      });
+
+      document.querySelectorAll('[data-step-end-days]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const step = Number(btn.getAttribute('data-step-end-days')) || 0;
+          endDaysInput.value = Math.max(0, Math.min((Number(endDaysInput.value) || 0) + step, 60));
           updateWindowLabel();
           chartDrillStack = [];
           if (chartBackBtn) chartBackBtn.disabled = true;
@@ -2458,8 +2525,14 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
           return;
         }
         if (reasonBucketsStatus) reasonBucketsStatus.textContent = 'Bucketing...';
-        const hoursVal = Math.max(1, Math.min(Number(hoursInput.value) || 24, 24 * 60));
-        const daysVal = Math.max(0, Math.min(Number(daysInput.value) || 0, 60));
+        const startHoursRaw = Number(startHoursInput.value);
+        const startDaysRaw = Number(startDaysInput.value);
+        const endHoursRaw = Number(endHoursInput.value);
+        const endDaysRaw = Number(endDaysInput.value);
+        const startHoursVal = Number.isFinite(startHoursRaw) ? Math.max(0, Math.min(startHoursRaw, 24 * 60)) : 0;
+        const startDaysVal = Number.isFinite(startDaysRaw) ? Math.max(0, Math.min(startDaysRaw, 60)) : 0;
+        const endHoursVal = Number.isFinite(endHoursRaw) ? Math.max(0, Math.min(endHoursRaw, 24 * 60)) : 0;
+        const endDaysVal = Number.isFinite(endDaysRaw) ? Math.max(0, Math.min(endDaysRaw, 60)) : 0;
         const filters = {};
         if (reasonFilter.value) filters.reason_includes = reasonFilter.value;
         if (subjectFilter.value) filters.subject_includes = subjectFilter.value;
@@ -2476,8 +2549,8 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
         const payload = {
           model: modelSelect.value,
           max_items: limit,
-          hours: hoursVal,
-          days: daysVal,
+          start_hours: Math.max(1, startHoursVal + startDaysVal * 24),
+          end_hours: endHoursVal + endDaysVal * 24,
           filters
         };
         try {

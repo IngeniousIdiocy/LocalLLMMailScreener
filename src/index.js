@@ -850,12 +850,30 @@ const buildStatusSnapshot = (ctx) => {
   };
 };
 
-const parseTimeWindowHours = (query) => {
+const parseTimeWindow = (query) => {
+  // Parse start_hours (the older boundary, further back in time)
+  const startHoursRaw = query.start_hours ? Number(query.start_hours) : null;
+  // Fallback to legacy hours/days params for backwards compatibility
   const hoursRaw = query.hours ? Number(query.hours) : null;
   const daysRaw = query.days ? Number(query.days) : null;
-  const totalHours = (Number.isFinite(hoursRaw) ? hoursRaw : 0) + (Number.isFinite(daysRaw) ? daysRaw * 24 : 0);
-  if (totalHours > 0) return Math.max(1, Math.min(totalHours, 24 * 60));
-  return 24; // default
+  let startHours;
+  if (Number.isFinite(startHoursRaw) && startHoursRaw > 0) {
+    startHours = Math.max(1, Math.min(startHoursRaw, 24 * 60));
+  } else {
+    const legacyTotal = (Number.isFinite(hoursRaw) ? hoursRaw : 0) + (Number.isFinite(daysRaw) ? daysRaw * 24 : 0);
+    startHours = legacyTotal > 0 ? Math.max(1, Math.min(legacyTotal, 24 * 60)) : 24;
+  }
+
+  // Parse end_hours (the newer boundary, closer to now - default 0 means "now")
+  const endHoursRaw = query.end_hours ? Number(query.end_hours) : null;
+  const endHours = Number.isFinite(endHoursRaw) && endHoursRaw >= 0 ? Math.min(endHoursRaw, 24 * 60) : 0;
+
+  return { startHours, endHours };
+};
+
+// Legacy wrapper for backwards compatibility
+const parseTimeWindowHours = (query) => {
+  return parseTimeWindow(query).startHours;
 };
 
 const parseFilterStrings = (value) => {
@@ -876,8 +894,11 @@ const parseBooleanQuery = (val) => {
 };
 
 const filterRefusals = (decisions = [], filters = {}) => {
-  const hours = parseTimeWindowHours(filters);
-  const since = Date.now() - hours * 60 * 60 * 1000;
+  const { startHours, endHours } = parseTimeWindow(filters);
+  const now = Date.now();
+  // startHours = older boundary (further back), endHours = newer boundary (closer to now)
+  const olderBoundary = now - startHours * 60 * 60 * 1000;
+  const newerBoundary = now - endHours * 60 * 60 * 1000;
   const minConf = filters.min_confidence != null ? Number(filters.min_confidence) : null;
   const maxConf = filters.max_confidence != null ? Number(filters.max_confidence) : null;
   const reasonIncludes = (filters.reason_includes || '').toLowerCase();
@@ -893,7 +914,9 @@ const filterRefusals = (decisions = [], filters = {}) => {
   return decisions.filter((d) => {
     if (d.notify) return false;
     const ts = d.decided_at || 0;
-    if (ts < since) return false;
+    // Must be within the time window: olderBoundary <= ts <= newerBoundary
+    if (ts < olderBoundary) return false;
+    if (ts > newerBoundary) return false;
     if (Number.isFinite(minConf) && (d.confidence ?? 0) < minConf) return false;
     if (Number.isFinite(maxConf) && (d.confidence ?? 0) > maxConf) return false;
     const feature = d.feature_flags || {};
@@ -990,11 +1013,11 @@ const buildRefusalAnalytics = (decisions, filters = {}) => {
 };
 
 const selectAnalysisCases = (decisions = [], filters = {}, modelCaps = {}) => {
-  const hours = parseTimeWindowHours(filters);
-  const filtered = filterRefusals(decisions, { ...filters, hours });
+  const { startHours, endHours } = parseTimeWindow(filters);
+  const filtered = filterRefusals(decisions, filters);
   const maxItems = modelCaps.maxItems || filtered.length;
   const trimmed = filtered.slice(-maxItems);
-  return { hours, selected: trimmed };
+  return { startHours, endHours, selected: trimmed };
 };
 
 const buildClaudePrompt = ({ cases = [], windowHours, filtersSummary }) => {
@@ -1114,10 +1137,10 @@ const startServer = (ctx) => {
     const maxItemsCap =
       modelChoice === 'opus' ? ctx.config.analystMaxItemsOpus : ctx.config.analystMaxItemsSonnet;
     const maxItems = clampNumber(body.max_items, 1, maxItemsCap, Math.min(200, maxItemsCap));
-    const filters = { ...(body.filters || {}), hours: body.hours, days: body.days };
+    const filters = { ...(body.filters || {}), start_hours: body.start_hours, end_hours: body.end_hours, hours: body.hours, days: body.days };
     const current = ctx.stateManager.getState();
     const decisions = current.recent_decisions || [];
-    const { hours, selected } = selectAnalysisCases(decisions, filters, { maxItems });
+    const { startHours, endHours, selected } = selectAnalysisCases(decisions, filters, { maxItems });
     if (!selected.length) {
       return res.json({ ok: true, model, count: 0, result: 'No refusals matched the filters.' });
     }
@@ -1136,9 +1159,10 @@ const startServer = (ctx) => {
     if (filters.removed_section) filterSummaryParts.push(`removed=${filters.removed_section}`);
     const filterSummary = filterSummaryParts.join(', ');
 
+    const windowDesc = endHours > 0 ? `${startHours}h-${endHours}h ago` : `${startHours}h`;
     const prompt = buildClaudePrompt({
       cases: selected,
-      windowHours: hours,
+      windowHours: windowDesc,
       filtersSummary: filterSummary
     });
 
@@ -1169,7 +1193,7 @@ const startServer = (ctx) => {
         ok: true,
         model,
         count: selected.length,
-        window_hours: hours,
+        window_hours: windowDesc,
         filters: filters,
         result: text || '(empty response)'
       });
@@ -1194,11 +1218,10 @@ const startServer = (ctx) => {
     const maxItemsCap =
       modelChoice === 'opus' ? ctx.config.analystMaxItemsOpus : ctx.config.analystMaxItemsSonnet;
     const maxItems = clampNumber(body.max_items, 1, maxItemsCap, maxItemsCap);
-    const filters = { ...(body.filters || {}), hours: body.hours, days: body.days };
+    const filters = { ...(body.filters || {}), start_hours: body.start_hours, end_hours: body.end_hours, hours: body.hours, days: body.days };
     const current = ctx.stateManager.getState();
     const decisions = current.recent_decisions || [];
-    const hours = parseTimeWindowHours(filters);
-    const filtered = filterRefusals(decisions, { ...filters, hours });
+    const filtered = filterRefusals(decisions, filters);
     const selected = filtered.slice(-maxItems);
     if (!selected.length) {
       return res.json({ ok: true, model, count: 0, buckets: [], assignments: [] });
