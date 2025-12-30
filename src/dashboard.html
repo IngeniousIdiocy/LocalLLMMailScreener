@@ -2277,6 +2277,76 @@ const analystState = { enabled: false, view: 'rendered', cfg: {}, refusalsLoaded
       return params;
     };
 
+    const runReasonBucketing = async () => {
+      const topSignalsBucketStatus = document.getElementById('top-signals-bucket-status');
+      if (!chartDataCache || !chartDataCache.samples || !chartDataCache.samples.length) {
+        if (reasonBucketsStatus) reasonBucketsStatus.textContent = 'Load refusals first';
+        if (topSignalsBucketStatus) topSignalsBucketStatus.textContent = 'Load refusals first';
+        return;
+      }
+      // Update status in both locations
+      if (reasonBucketsStatus) reasonBucketsStatus.textContent = 'Bucketing...';
+      if (topSignalsBucketStatus) topSignalsBucketStatus.textContent = 'Bucketing...';
+
+      const startHoursRaw = Number(startHoursInput.value);
+      const startDaysRaw = Number(startDaysInput.value);
+      const endHoursRaw = Number(endHoursInput.value);
+      const endDaysRaw = Number(endDaysInput.value);
+      const startHoursVal = Number.isFinite(startHoursRaw) ? Math.max(0, Math.min(startHoursRaw, 24 * 60)) : 0;
+      const startDaysVal = Number.isFinite(startDaysRaw) ? Math.max(0, Math.min(startDaysRaw, 60)) : 0;
+      const endHoursVal = Number.isFinite(endHoursRaw) ? Math.max(0, Math.min(endHoursRaw, 24 * 60)) : 0;
+      const endDaysVal = Number.isFinite(endDaysRaw) ? Math.max(0, Math.min(endDaysRaw, 60)) : 0;
+      const filters = {};
+      if (reasonFilter.value) filters.reason_includes = reasonFilter.value;
+      if (subjectFilter.value) filters.subject_includes = subjectFilter.value;
+      if (fromFilter.value) filters.from_includes = fromFilter.value;
+      if (domainFilter.value) filters.domain_includes = domainFilter.value;
+      if (minConf.value) filters.min_confidence = minConf.value;
+      if (maxConf.value) filters.max_confidence = maxConf.value;
+      if (removedSection.value) filters.removed_section = removedSection.value;
+      if (hasAttachments.checked) filters.has_attachments = true;
+      if (hasUrls.checked) filters.has_urls = true;
+      if (hasIpUrls.checked) filters.has_ip_based_urls = true;
+      if (hasMismatch.checked) filters.has_mismatched_urls = true;
+      const limit = updateModelMaxLabel();
+      const payload = {
+        model: 'gemini',
+        max_items: limit,
+        start_hours: Math.max(1, startHoursVal + startDaysVal * 24),
+        end_hours: endHoursVal + endDaysVal * 24,
+        filters
+      };
+      try {
+        const res = await fetch('/api/analysis/reasons', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok || data.ok === false) {
+          const msg = data.error || 'Reason bucketing failed';
+          if (reasonBucketsStatus) reasonBucketsStatus.textContent = msg;
+          if (topSignalsBucketStatus) topSignalsBucketStatus.textContent = msg;
+          return;
+        }
+        chartDataCache = {
+          ...(chartDataCache || {}),
+          reasonBuckets: data.buckets || [],
+          reasonAssignments: data.assignments || []
+        };
+        const bucketCount = (data.buckets || []).length;
+        if (reasonBucketsStatus) reasonBucketsStatus.textContent = `Buckets ready (${bucketCount})`;
+        // Re-render top signals with bucket data
+        renderTopSignals(chartDataCache, chartDataCache);
+        // Re-render chart if active
+        renderChart(chartSelect?.value || 'none', chartDataCache);
+      } catch (err) {
+        console.error('Reason bucketing failed', err);
+        if (reasonBucketsStatus) reasonBucketsStatus.textContent = 'Reason bucketing failed';
+        if (topSignalsBucketStatus) topSignalsBucketStatus.textContent = 'Bucketing failed';
+      }
+    };
+
     const renderBuckets = (buckets = []) => {
       if (!buckets.length) {
         bucketList.innerHTML = '<div class="analyst-meta">No refusals in range.</div>';
@@ -2287,23 +2357,51 @@ const analystState = { enabled: false, view: 'rendered', cfg: {}, refusalsLoaded
         .join('');
     };
 
-    const renderTopSignals = (analytics) => {
+    const renderTopSignals = (analytics, bucketData = {}) => {
       const renderSection = (arr, label) => {
         if (!arr || !arr.length) return '';
-        const chips = arr.slice(0, 6).map((r) => 
+        const chips = arr.slice(0, 6).map((r) =>
           `<span class="signal-chip">${escapeHtml(r.label)}<span class="count">${r.count}</span></span>`
         ).join('');
         return `<div class="signal-section"><div class="signal-label">${label}</div><div class="signal-items">${chips}</div></div>`;
       };
-      
+
+      // Check if we have bucketed reasons
+      const reasonBuckets = bucketData.reasonBuckets || [];
+      const reasonAssignments = bucketData.reasonAssignments || [];
+      const hasBuckets = reasonBuckets.length > 0 && reasonAssignments.length > 0;
+
+      let reasonsSection = '';
+      if (hasBuckets) {
+        // Show bucketed reasons with counts
+        const bucketCounts = new Map();
+        reasonAssignments.forEach((a) => {
+          const key = a.bucket || 'Other';
+          bucketCounts.set(key, (bucketCounts.get(key) || 0) + 1);
+        });
+        const bucketArr = Array.from(bucketCounts.entries())
+          .map(([label, count]) => ({ label, count }))
+          .sort((a, b) => b.count - a.count);
+        reasonsSection = renderSection(bucketArr, 'Top Reasons');
+      } else {
+        // Show button to bucket reasons
+        reasonsSection = `<div class="signal-section"><div class="signal-label">Top Reasons</div><div class="signal-items"><button class="btn secondary small" id="top-signals-bucket-btn">Bucket reasons with Gemini</button><span class="analyst-meta" id="top-signals-bucket-status"></span></div></div>`;
+      }
+
       const sections = [
-        renderSection(analytics.top_reasons, 'Top Reasons'),
+        reasonsSection,
         renderSection(analytics.top_senders, 'Top Senders'),
         renderSection(analytics.top_domains, 'Top Domains')
       ].filter(Boolean);
-      
+
       topSignals.innerHTML = sections.length ? sections.join('') : '<div class="analyst-meta">No signals found</div>';
       chartDataCache = { ...(chartDataCache || {}), ...analytics };
+
+      // Attach click handler for the bucket button if it exists
+      const topSignalsBucketBtn = document.getElementById('top-signals-bucket-btn');
+      if (topSignalsBucketBtn) {
+        topSignalsBucketBtn.addEventListener('click', runReasonBucketing);
+      }
     };
 
     const renderLatestRefusals = (latest = []) => {
@@ -2359,6 +2457,8 @@ const analystState = { enabled: false, view: 'rendered', cfg: {}, refusalsLoaded
       chartDrillStack = [];
       if (chartBackBtn) chartBackBtn.disabled = true;
       if (chartRangeLabel) chartRangeLabel.textContent = '';
+      // Clear bucket data when filters change - user must re-bucket
+      if (reasonBucketsStatus) reasonBucketsStatus.textContent = '';
       try {
         const params = buildFilterParams();
         const res = await fetch(`/api/analytics/refusals?${params.toString()}`);
@@ -2367,7 +2467,7 @@ const analystState = { enabled: false, view: 'rendered', cfg: {}, refusalsLoaded
         if (analystTitle) {
           analystTitle.textContent = `Filtered ${total} refusals`;
         }
-        
+
         // Auto-select model based on count
         const opusMax = analystState.cfg.analyst_max_items_opus || 200;
         if (total <= opusMax) {
@@ -2376,11 +2476,13 @@ const analystState = { enabled: false, view: 'rendered', cfg: {}, refusalsLoaded
           modelSelect.value = 'sonnet';
         }
         updateModelMaxLabel();
-        
+
         renderBuckets(data.buckets || []);
-        renderTopSignals(data);
+        // Clear reason buckets - pass empty bucket data to show the bucket button
+        renderTopSignals(data, {});
         renderLatestRefusals(data.latest || []);
-        chartDataCache = { ...(chartDataCache || {}), ...data };
+        // Store data but clear any previous bucket results
+        chartDataCache = { ...data, reasonBuckets: [], reasonAssignments: [] };
         if (chartSelect) renderChart(chartSelect.value, chartDataCache);
         analystState.refusalsLoaded = true;
       } catch (e) {
@@ -2687,65 +2789,7 @@ const analystState = { enabled: false, view: 'rendered', cfg: {}, refusalsLoaded
         }
       });
 
-      reasonBucketsBtn?.addEventListener('click', async () => {
-        if (!chartDataCache || !chartDataCache.samples || !chartDataCache.samples.length) {
-          if (reasonBucketsStatus) reasonBucketsStatus.textContent = 'Load refusals first';
-          return;
-        }
-        if (reasonBucketsStatus) reasonBucketsStatus.textContent = 'Bucketing...';
-        const startHoursRaw = Number(startHoursInput.value);
-        const startDaysRaw = Number(startDaysInput.value);
-        const endHoursRaw = Number(endHoursInput.value);
-        const endDaysRaw = Number(endDaysInput.value);
-        const startHoursVal = Number.isFinite(startHoursRaw) ? Math.max(0, Math.min(startHoursRaw, 24 * 60)) : 0;
-        const startDaysVal = Number.isFinite(startDaysRaw) ? Math.max(0, Math.min(startDaysRaw, 60)) : 0;
-        const endHoursVal = Number.isFinite(endHoursRaw) ? Math.max(0, Math.min(endHoursRaw, 24 * 60)) : 0;
-        const endDaysVal = Number.isFinite(endDaysRaw) ? Math.max(0, Math.min(endDaysRaw, 60)) : 0;
-        const filters = {};
-        if (reasonFilter.value) filters.reason_includes = reasonFilter.value;
-        if (subjectFilter.value) filters.subject_includes = subjectFilter.value;
-        if (fromFilter.value) filters.from_includes = fromFilter.value;
-        if (domainFilter.value) filters.domain_includes = domainFilter.value;
-        if (minConf.value) filters.min_confidence = minConf.value;
-        if (maxConf.value) filters.max_confidence = maxConf.value;
-        if (removedSection.value) filters.removed_section = removedSection.value;
-        if (hasAttachments.checked) filters.has_attachments = true;
-        if (hasUrls.checked) filters.has_urls = true;
-        if (hasIpUrls.checked) filters.has_ip_based_urls = true;
-        if (hasMismatch.checked) filters.has_mismatched_urls = true;
-        const limit = updateModelMaxLabel();
-        const payload = {
-          model: 'gemini',
-          max_items: limit,
-          start_hours: Math.max(1, startHoursVal + startDaysVal * 24),
-          end_hours: endHoursVal + endDaysVal * 24,
-          filters
-        };
-        try {
-          const res = await fetch('/api/analysis/reasons', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-          const data = await res.json();
-          if (!res.ok || data.ok === false) {
-            const msg = data.error || 'Reason bucketing failed';
-            if (reasonBucketsStatus) reasonBucketsStatus.textContent = msg;
-            return;
-          }
-          chartDataCache = {
-            ...(chartDataCache || {}),
-            reasonBuckets: data.buckets || [],
-            reasonAssignments: data.assignments || []
-          };
-          if (reasonBucketsStatus)
-            reasonBucketsStatus.textContent = `Buckets ready (${(data.buckets || []).length})`;
-          renderChart(chartSelect?.value || 'none', chartDataCache);
-        } catch (err) {
-          console.error('Reason bucketing failed', err);
-          if (reasonBucketsStatus) reasonBucketsStatus.textContent = 'Reason bucketing failed';
-        }
-      });
+      reasonBucketsBtn?.addEventListener('click', runReasonBucketing);
 
       applyViewToggle();
       if (chartArea) chartArea.classList.remove('active');
