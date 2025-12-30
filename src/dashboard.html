@@ -77,6 +77,14 @@
 
     .btn.small { padding: 5px 8px; font-size: 11px; }
 
+    .btn.gemini-fallback {
+      background: var(--danger);
+      color: #fff;
+    }
+    .btn.gemini-fallback:hover:not(:disabled) {
+      box-shadow: 0 8px 24px rgba(255,75,75,0.3);
+    }
+
     h1 {
       font-size: 1.75rem;
       letter-spacing: -0.02em;
@@ -185,6 +193,46 @@
     /* Notifications Section */
     .notifications-section .card-header {
       margin-bottom: 16px;
+      justify-content: flex-start;
+    }
+
+    .notifications-section .card-header .card-meta {
+      margin-left: auto;
+    }
+
+    .notifications-section.collapsed .notifications-grid {
+      display: none;
+    }
+
+    .notifications-section.collapsed .card-header {
+      margin-bottom: 0;
+    }
+
+    .card-header.clickable {
+      cursor: pointer;
+    }
+
+    .card-header.clickable:hover {
+      opacity: 0.85;
+    }
+
+    .collapse-toggle {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 14px;
+      cursor: pointer;
+      padding: 4px 8px;
+      margin-left: 4px;
+      transition: transform 0.2s ease;
+    }
+
+    .collapse-toggle:hover {
+      color: var(--text);
+    }
+
+    .notifications-section.collapsed .collapse-toggle {
+      transform: rotate(-90deg);
     }
 
     .notifications-grid {
@@ -344,6 +392,57 @@
       margin-top: 12px;
     }
 
+    /* Primary controls - flex row on desktop */
+    .primary-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .primary-controls > .btn {
+      display: flex;
+      align-items: center;
+    }
+
+    /* Advanced filters toggle */
+    .advanced-filters-toggle {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 8px 0;
+    }
+
+    .advanced-filters-toggle:hover {
+      color: var(--text);
+    }
+
+    .advanced-filters-toggle .collapse-toggle {
+      padding: 2px 4px;
+      font-size: 12px;
+      margin-left: 0;
+      transition: transform 0.2s ease;
+    }
+
+    /* Arrow rotates when collapsed */
+    .advanced-filters-toggle.collapsed .collapse-toggle {
+      transform: rotate(-90deg);
+    }
+
+    /* Advanced filters content */
+    .advanced-filters {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .advanced-filters.collapsed {
+      display: none;
+    }
+
     .control-group-row {
       display: flex;
       flex-wrap: wrap;
@@ -497,13 +596,41 @@
       margin: 3px;
     }
 
-    #analyst-panel {
+    /* Analyst Section */
+    .analyst-header-left {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .analyst-header-title {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .analyst-section.collapsed .analyst-panel-content {
       display: none;
     }
 
-    #analyst-panel.active {
+    .analyst-section.collapsed .card-header {
+      margin-bottom: 0;
+    }
+
+    .analyst-section.collapsed .collapse-toggle {
+      transform: rotate(-90deg);
+    }
+
+    .analyst-panel-content {
       display: flex;
       flex-direction: column;
+    }
+
+    .analyst-panel-subheader {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
     }
 
     .grid-halves {
@@ -609,19 +736,6 @@
       max-height: none;
     }
     
-    .refusals-pane {
-      /* Height set by JS to match signals-pane */
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-    }
-    
-.refusals-pane .list-scroll {
-  /* Scroll when content exceeds available space */
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
-}
 
 .charts-card {
   background: var(--glass);
@@ -784,87 +898,6 @@
 
     .grid-halves.section-spacer {
       margin-top: 12px;
-    }
-
-    /* Refusal card in latest list */
-    .refusal-card {
-      background: rgba(0,0,0,0.25);
-      border: 1px solid var(--glass-border);
-      border-radius: 10px;
-      padding: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      transition: border-color 0.15s ease;
-    }
-
-    .refusal-card:hover {
-      border-color: rgba(255,255,255,0.2);
-    }
-
-    .refusal-card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 10px;
-    }
-
-    .refusal-card-subject {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text);
-      flex: 1;
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .refusal-card-time {
-      font-size: 11px;
-      color: var(--muted);
-      white-space: nowrap;
-    }
-
-    .refusal-card-from {
-      font-size: 12px;
-      color: var(--muted);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .refusal-card-reason {
-      font-size: 12px;
-      color: var(--text);
-      opacity: 0.8;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-    }
-
-    .refusal-card-footer {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-top: 4px;
-      padding-top: 8px;
-      border-top: 1px solid rgba(255,255,255,0.06);
-    }
-
-    .refusal-card-meta {
-      font-size: 11px;
-      color: var(--muted);
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .refusal-card-meta .tag {
-      background: rgba(255,255,255,0.08);
-      padding: 2px 6px;
-      border-radius: 4px;
     }
 
     /* Signal bars */
@@ -1037,6 +1070,51 @@
       .stat-value { font-size: 20px; }
       .notifications-grid {
         grid-template-columns: 1fr;
+      }
+
+      /* Analyst mode mobile layout - 2x3 grid with equal columns */
+      .primary-controls {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .primary-controls .control {
+        min-width: unset;
+        width: 100%;
+      }
+
+      .primary-controls .load-btn-cell {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .primary-controls .load-btn-cell .btn {
+        flex: 1;
+        width: 100%;
+      }
+
+      .primary-controls .load-btn-cell label {
+        display: none;
+      }
+
+      .advanced-filters-toggle {
+        border-top: 1px solid var(--glass-border);
+        margin-top: 4px;
+        padding-top: 12px;
+      }
+
+      .advanced-filters .control-group-row {
+        flex-direction: column;
+      }
+
+      .advanced-filters .control.wide {
+        min-width: unset;
+        width: 100%;
+      }
+
+      .advanced-filters .control.checkbox-grid {
+        width: 100%;
       }
     }
 
@@ -1239,35 +1317,36 @@
       </div>
     </div>
 
-    <div class="card notifications-section">
-      <div class="card-header">
+    <div class="card notifications-section" id="notifications-section">
+      <div class="card-header clickable" id="notifications-header">
         <span class="card-title">Recent Notifications</span>
+        <button class="collapse-toggle" id="notifications-toggle" title="Collapse/Expand">▼</button>
         <span class="card-meta">Latest first · max 50</span>
       </div>
       <div class="notifications-grid" id="notifications-grid"></div>
     </div>
 
-    <div class="card">
-      <div class="card-header toggle-row">
-        <div>
-          <span class="card-title">Analyst Mode</span>
-          <div class="analyst-meta">Manual refusal exploration and Claude analysis (no auto refresh).</div>
+    <div class="card analyst-section collapsed" id="analyst-section">
+      <div class="card-header clickable" id="analyst-header">
+        <div class="analyst-header-left">
+          <div class="analyst-header-title">
+            <span class="card-title">Analyst Mode</span>
+            <button class="collapse-toggle" id="analyst-toggle" title="Collapse/Expand">▼</button>
+          </div>
+          <span class="card-meta">Manual refusal exploration and Claude analysis</span>
         </div>
-        <button class="btn" id="analyst-toggle">Enable</button>
       </div>
-    </div>
-
-    <div class="card" id="analyst-panel">
-      <div class="card-header">
-        <span class="card-title" id="analyst-title">Refusal Explorer (filtered 0 refusals)</span>
-        <div class="pill-outline" id="analyst-window-label"></div>
-      </div>
+      <div class="analyst-panel-content" id="analyst-panel">
+        <div class="analyst-panel-subheader">
+          <span class="analyst-meta" id="analyst-title">Filtered 0 refusals</span>
+          <div class="pill-outline" id="analyst-window-label"></div>
+        </div>
 
       <div class="analyst-controls">
-        <!-- Row 1: Time Range, Model, Load button, Checkboxes -->
-        <div class="control-group-row">
+        <!-- Primary controls: 2x3 grid on mobile -->
+        <div class="primary-controls">
           <div class="control">
-            <label>From (hours ago)</label>
+            <label>From (hours)</label>
             <div class="control-row">
               <button class="btn secondary small" data-step-start-hours="-1">−</button>
               <input type="number" id="start-hours-input" min="0" max="336" value="0" />
@@ -1283,7 +1362,7 @@
             </div>
           </div>
           <div class="control">
-            <label>To (hours ago)</label>
+            <label>To (hours)</label>
             <div class="control-row">
               <button class="btn secondary small" data-step-end-hours="-1">−</button>
               <input type="number" id="end-hours-input" min="0" max="336" value="0" />
@@ -1299,55 +1378,66 @@
             </div>
           </div>
           <div class="control">
-            <label>Model</label>
-            <div class="control-row">
-              <select id="model-select">
-                <option value="opus">Opus</option>
-                <option value="sonnet">Sonnet</option>
-              </select>
-              <span class="analyst-meta" id="model-max-label"></span>
-            </div>
+            <label id="model-label">Model</label>
+            <select id="model-select">
+              <option value="opus">Opus</option>
+              <option value="sonnet">Sonnet</option>
+              <option value="gemini">Gemini</option>
+            </select>
           </div>
-          <button class="btn" id="load-analytics">Load refusals</button>
-          <div class="control checkbox-grid">
-            <div class="checkbox-2x2">
-              <label><input type="checkbox" id="has-attachments" /> Attachments</label>
-              <label><input type="checkbox" id="has-ip-urls" /> IP URLs</label>
-              <label><input type="checkbox" id="has-urls" /> URLs</label>
-              <label><input type="checkbox" id="has-mismatch" /> Mismatched</label>
-            </div>
+          <div class="control load-btn-cell">
+            <label>&nbsp;</label>
+            <button class="btn" id="load-analytics">Load refusals</button>
           </div>
-          <span class="analyst-meta" id="analyst-status"></span>
         </div>
 
-        <!-- Row 2: Text filters -->
-        <div class="control-group-row">
-          <div class="control wide">
-            <label>Reason contains</label>
-            <input id="reason-filter" placeholder="marketing, newsletter, etc" />
-          </div>
-          <div class="control wide">
-            <label>Subject contains</label>
-            <input id="subject-filter" placeholder="invoice, alert, etc" />
-          </div>
-          <div class="control wide">
-            <label>From contains</label>
-            <input id="from-filter" placeholder="example.com, sender" />
-          </div>
-          <div class="control wide">
-            <label>Domain contains</label>
-            <input id="domain-filter" placeholder="domain.com" />
-          </div>
-          <div class="control">
-            <label>Confidence</label>
-            <div class="control-row">
-              <input id="min-conf" type="number" min="0" max="1" step="0.05" placeholder="min" style="width:55px;" />
-              <input id="max-conf" type="number" min="0" max="1" step="0.05" placeholder="max" style="width:55px;" />
+        <!-- Advanced filters toggle -->
+        <div class="advanced-filters-toggle collapsed" id="advanced-filters-toggle">
+          <span>Advanced Filters</span>
+          <button class="collapse-toggle" title="Collapse/Expand">▼</button>
+        </div>
+
+        <!-- Advanced filters (collapsed by default on mobile) -->
+        <div class="advanced-filters collapsed" id="advanced-filters">
+          <div class="control-group-row">
+            <div class="control checkbox-grid">
+              <div class="checkbox-2x2">
+                <label><input type="checkbox" id="has-attachments" /> Attachments</label>
+                <label><input type="checkbox" id="has-ip-urls" /> IP URLs</label>
+                <label><input type="checkbox" id="has-urls" /> URLs</label>
+                <label><input type="checkbox" id="has-mismatch" /> Mismatched</label>
+              </div>
             </div>
+            <span class="analyst-meta" id="analyst-status"></span>
           </div>
-          <div class="control wide">
-            <label>Removed sections</label>
-            <input id="removed-section" placeholder="unsubscribe_footer, reply_hea..." />
+          <div class="control-group-row">
+            <div class="control wide">
+              <label>Reason contains</label>
+              <input id="reason-filter" placeholder="marketing, newsletter, etc" />
+            </div>
+            <div class="control wide">
+              <label>Subject contains</label>
+              <input id="subject-filter" placeholder="invoice, alert, etc" />
+            </div>
+            <div class="control wide">
+              <label>From contains</label>
+              <input id="from-filter" placeholder="example.com, sender" />
+            </div>
+            <div class="control wide">
+              <label>Domain contains</label>
+              <input id="domain-filter" placeholder="domain.com" />
+            </div>
+            <div class="control">
+              <label>Confidence</label>
+              <div class="control-row">
+                <input id="min-conf" type="number" min="0" max="1" step="0.05" placeholder="min" style="width:55px;" />
+                <input id="max-conf" type="number" min="0" max="1" step="0.05" placeholder="max" style="width:55px;" />
+              </div>
+            </div>
+            <div class="control wide">
+              <label>Removed sections</label>
+              <input id="removed-section" placeholder="unsubscribe_footer, reply_hea..." />
+            </div>
           </div>
         </div>
       </div>
@@ -1360,7 +1450,7 @@
             <span class="pill-outline" id="claude-meta"></span>
           </div>
           <div class="claude-pane-actions">
-            <button class="btn" id="run-claude">Run Claude analysis</button>
+            <button class="btn" id="run-claude">Run analysis</button>
             <div class="segment-toggle" id="view-toggle">
               <button id="view-rendered-btn" class="active">Rendered</button>
               <button id="view-raw-btn">Raw</button>
@@ -1407,12 +1497,17 @@
           <div class="signal-label" style="margin-top:12px;">Hourly Distribution</div>
           <div class="list-scroll wrap" id="bucket-list"></div>
         </div>
-        <div class="claude-pane refusals-pane">
-          <div class="card-title">Latest Refusals</div>
-          <div class="list-scroll" id="latest-refusals"></div>
-        </div>
       </div>
     </div>
+  </div>
+
+  <div class="card notifications-section collapsed" id="refusals-section">
+    <div class="card-header clickable" id="refusals-header">
+      <span class="card-title">Latest Refusals</span>
+      <button class="collapse-toggle" id="refusals-toggle" title="Collapse/Expand">▼</button>
+      <span class="card-meta">From analyst filters</span>
+    </div>
+    <div class="notifications-grid" id="latest-refusals"></div>
   </div>
 
   <!-- Gmail Token Refresh Modal -->
@@ -1445,6 +1540,11 @@
     const healthCards = document.getElementById('health-cards');
     const statsGrid = document.getElementById('stats-grid');
     const notificationsGrid = document.getElementById('notifications-grid');
+    const notificationsSection = document.getElementById('notifications-section');
+    const notificationsHeader = document.getElementById('notifications-header');
+    const notificationsToggle = document.getElementById('notifications-toggle');
+    const refusalsSection = document.getElementById('refusals-section');
+    const refusalsHeader = document.getElementById('refusals-header');
     const configEl = document.getElementById('config');
     const gpuSection = document.getElementById('gpu-section');
     const gpuNameEl = document.getElementById('gpu-name');
@@ -1452,8 +1552,12 @@
     const gpuChartCanvas = document.getElementById('gpu-chart');
     const gpuXAxis = document.getElementById('gpu-x-axis');
     const gpuLegend = document.getElementById('gpu-legend');
+    const analystSection = document.getElementById('analyst-section');
+    const analystHeader = document.getElementById('analyst-header');
     const analystToggle = document.getElementById('analyst-toggle');
     const analystPanel = document.getElementById('analyst-panel');
+    const advancedFiltersToggle = document.getElementById('advanced-filters-toggle');
+    const advancedFilters = document.getElementById('advanced-filters');
     const analystStatus = document.getElementById('analyst-status');
     const analystTitle = document.getElementById('analyst-title');
     const analystWindowLabel = document.getElementById('analyst-window-label');
@@ -1461,7 +1565,6 @@
     const latestRefusals = document.getElementById('latest-refusals');
     const topSignals = document.getElementById('top-signals');
     const signalsPane = document.querySelector('.signals-pane');
-    const refusalsPane = document.querySelector('.refusals-pane');
     const claudeMeta = document.getElementById('claude-meta');
     const claudeOutputRendered = document.getElementById('claude-output-rendered');
     const claudeOutputRaw = document.getElementById('claude-output-raw');
@@ -1476,7 +1579,7 @@
     const reasonBucketsStatus = document.getElementById('reason-buckets-status');
     const chartBackBtn = document.getElementById('chart-back');
     const chartRangeLabel = document.getElementById('chart-range-label');
-    const modelMaxLabel = document.getElementById('model-max-label');
+    const modelLabel = document.getElementById('model-label');
     const startHoursInput = document.getElementById('start-hours-input');
     const startDaysInput = document.getElementById('start-days-input');
     const endHoursInput = document.getElementById('end-hours-input');
@@ -2121,10 +2224,14 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
 
     const updateModelMaxLabel = () => {
       const model = modelSelect.value;
-      const opusMax = analystState.cfg.analyst_max_items_opus || 200;
-      const sonnetMax = analystState.cfg.analyst_max_items_sonnet || 1000;
-      const max = model === 'opus' ? opusMax : sonnetMax;
-      modelMaxLabel.textContent = `Max ${max} items`;
+      const opusMax = analystState.cfg.analyst_max_items_opus || 150;
+      const sonnetMax = analystState.cfg.analyst_max_items_sonnet || 150;
+      const geminiMax = analystState.cfg.analyst_max_items_gemini || 500;
+      let max;
+      if (model === 'opus') max = opusMax;
+      else if (model === 'gemini') max = geminiMax;
+      else max = sonnetMax;
+      if (modelLabel) modelLabel.textContent = `Model (${max} max)`;
       return max;
     };
 
@@ -2169,24 +2276,6 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
         .join('');
     };
 
-    const syncPaneHeights = () => {
-      if (!signalsPane || !refusalsPane) return;
-      // Reset refusals height first so signals can size naturally
-      refusalsPane.style.height = 'auto';
-      // Wait for layout, then match heights
-      requestAnimationFrame(() => {
-        const signalsHeight = signalsPane.offsetHeight;
-        if (signalsHeight > 0) {
-          refusalsPane.style.height = signalsHeight + 'px';
-        }
-      });
-    };
-
-    // Re-sync on window resize
-    window.addEventListener('resize', () => {
-      if (analystState.enabled) syncPaneHeights();
-    });
-
     const renderTopSignals = (analytics) => {
       const renderSection = (arr, label) => {
         if (!arr || !arr.length) return '';
@@ -2219,22 +2308,32 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
             flags.has_urls ? 'urls' : null,
             flags.has_ip_based_urls ? 'ip' : null,
             flags.has_mismatched_urls ? 'mismatch' : null
-          ].filter(Boolean).map(t => `<span class="tag">${t}</span>`).join('');
-          
+          ].filter(Boolean).join(', ');
+          const gmailLink = r.gmail_link
+            ? `<a href="${r.gmail_link}" target="_blank" class="notif-link">Open</a>`
+            : '';
+
           return `
-            <div class="refusal-card">
-              <div class="refusal-card-header">
-                <span class="refusal-card-subject">${escapeHtml(r.subject || 'No subject')}</span>
-                <span class="refusal-card-time">${fmtTimeShort(r.decided_at)}</span>
+            <div class="notification-card">
+              <div class="notif-row">
+                <span><span class="notif-label">From:</span>${escapeHtml(r.from || 'unknown')}</span>
+                <span><span class="notif-label">Time:</span>${fmtTimeShort(r.decided_at)}</span>
               </div>
-              <div class="refusal-card-from">${escapeHtml(r.from || 'unknown')}</div>
-              <div class="refusal-card-reason">${escapeHtml(r.reason || '')}</div>
-              <div class="refusal-card-footer">
-                <div class="refusal-card-meta">
-                  <span>conf: ${r.confidence ?? 'n/a'}</span>
-                  ${tags}
-                </div>
-                ${r.gmail_link ? `<a class="notif-link" href="${r.gmail_link}" target="_blank">Open</a>` : ''}
+              <div class="notif-row">
+                <span><span class="notif-label">Conf:</span>${r.confidence ?? 'n/a'}</span>
+                <span>${tags}</span>
+              </div>
+              <div class="notif-field subject">
+                <span class="notif-label">Subject:</span>
+                <span class="notif-value">${escapeHtml(r.subject || 'No subject')}</span>
+              </div>
+              <div class="notif-field reason">
+                <span class="notif-label">Reason:</span>
+                <span class="notif-value">${escapeHtml(r.reason || '')}</span>
+              </div>
+              <div class="notif-footer">
+                <span class="notif-id"></span>
+                ${gmailLink}
               </div>
             </div>
           `;
@@ -2255,7 +2354,7 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
         const data = await res.json();
         const total = data.total || 0;
         if (analystTitle) {
-          analystTitle.textContent = `Refusal Explorer (filtered ${total} refusals)`;
+          analystTitle.textContent = `Filtered ${total} refusals`;
         }
         
         // Auto-select model based on count
@@ -2270,7 +2369,6 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
         renderBuckets(data.buckets || []);
         renderTopSignals(data);
         renderLatestRefusals(data.latest || []);
-        syncPaneHeights();
         chartDataCache = { ...(chartDataCache || {}), ...data };
         if (chartSelect) renderChart(chartSelect.value, chartDataCache);
       } catch (e) {
@@ -2280,9 +2378,22 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
       }
     };
 
-    const runClaudeAnalysis = async () => {
+    const setGeminiFallbackMode = (active) => {
+      if (active) {
+        runClaudeBtn.textContent = 'Run Gemini analysis';
+        runClaudeBtn.classList.add('gemini-fallback');
+        modelSelect.value = 'gemini';
+        updateModelMaxLabel();
+      } else {
+        runClaudeBtn.textContent = 'Run analysis';
+        runClaudeBtn.classList.remove('gemini-fallback');
+      }
+    };
+
+    const runClaudeAnalysis = async (forceGemini = false) => {
       // Don't overwrite analyst-status - show running state in claude-meta instead
-      claudeMeta.textContent = 'Running...';
+      const selectedModel = forceGemini ? 'gemini' : modelSelect.value;
+      claudeMeta.textContent = `Running ${selectedModel}...`;
       // Show the output content area
       claudeOutputContent.style.display = 'block';
       copyOutputBtn.disabled = true;
@@ -2312,7 +2423,7 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
       if (hasMismatch.checked) filters.has_mismatched_urls = true;
       const limit = updateModelMaxLabel();
       const payload = {
-        model: modelSelect.value,
+        model: selectedModel,
         max_items: limit,
         start_hours: Math.max(1, startHoursVal + startDaysVal * 24),
         end_hours: endHoursVal + endDaysVal * 24,
@@ -2326,22 +2437,36 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
         });
         const data = await res.json();
         if (!res.ok || data.ok === false) {
-          const msg = data.error || 'Claude call failed';
+          const msg = data.error || 'Analysis failed';
+          // Check if this is a token limit error and Gemini is available
+          const isTokenError = msg.includes('too long') || msg.includes('token') || msg.includes('maximum');
+          const geminiAvailable = analystState.cfg.gemini_available && selectedModel !== 'gemini';
+          if (isTokenError && geminiAvailable) {
+            // Fallback to Gemini
+            claudeMeta.textContent = 'Token limit exceeded, retrying with Gemini...';
+            setGeminiFallbackMode(true);
+            return runClaudeAnalysis(true);
+          }
           claudeMeta.textContent = 'Error';
           claudeOutputRendered.innerHTML = `<span style="color:var(--danger);">${escapeHtml(msg)}</span>`;
           claudeOutputRaw.textContent = msg;
           return;
         }
-        claudeMeta.textContent = `${data.model} · ${data.count} cases · ${data.window_hours || '?'}h`;
+        const providerLabel = data.provider === 'gemini' ? 'Gemini' : data.model;
+        claudeMeta.textContent = `${providerLabel} · ${data.count} cases · ${data.window_hours || '?'}h`;
         const outputText = data.result || '(empty response)';
         claudeOutputRendered.innerHTML = renderMarkdown(outputText);
         claudeOutputRaw.textContent = outputText;
         copyOutputBtn.disabled = false;
+        // If we used Gemini fallback, keep the button in fallback mode
+        if (data.provider === 'gemini' && selectedModel === 'gemini' && forceGemini) {
+          setGeminiFallbackMode(true);
+        }
       } catch (e) {
-        console.error('Claude analysis failed', e);
+        console.error('Analysis failed', e);
         claudeMeta.textContent = 'Error';
-        claudeOutputRendered.innerHTML = '<span style="color:var(--danger);">Claude call failed</span>';
-        claudeOutputRaw.textContent = 'Claude call failed';
+        claudeOutputRendered.innerHTML = '<span style="color:var(--danger);">Analysis call failed</span>';
+        claudeOutputRaw.textContent = 'Analysis call failed';
       }
     };
 
@@ -2413,6 +2538,25 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
       }
     };
 
+    // Wire up notifications collapse toggle
+    const toggleNotifications = () => {
+      notificationsSection?.classList.toggle('collapsed');
+    };
+    notificationsHeader?.addEventListener('click', toggleNotifications);
+
+    // Wire up refusals collapse toggle
+    const toggleRefusals = () => {
+      refusalsSection?.classList.toggle('collapsed');
+    };
+    refusalsHeader?.addEventListener('click', toggleRefusals);
+
+    // Wire up advanced filters collapse toggle
+    const toggleAdvancedFilters = () => {
+      advancedFilters?.classList.toggle('collapsed');
+      advancedFiltersToggle?.classList.toggle('collapsed');
+    };
+    advancedFiltersToggle?.addEventListener('click', toggleAdvancedFilters);
+
     // Wire up modal events
     gmailModalClose?.addEventListener('click', closeGmailModal);
     gmailModalCancel?.addEventListener('click', closeGmailModal);
@@ -2422,14 +2566,15 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
     });
 
     const wireAnalystControls = () => {
-      analystToggle?.addEventListener('click', () => {
-        analystState.enabled = !analystState.enabled;
-        analystPanel.classList.toggle('active', analystState.enabled);
-        analystToggle.textContent = analystState.enabled ? 'Disable' : 'Enable';
-        if (analystState.enabled) {
+      const toggleAnalyst = () => {
+        const wasCollapsed = analystSection?.classList.contains('collapsed');
+        analystSection?.classList.toggle('collapsed');
+        analystState.enabled = wasCollapsed;
+        if (wasCollapsed) {
           loadRefusalAnalytics();
         }
-      });
+      };
+      analystHeader?.addEventListener('click', toggleAnalyst);
 
       viewRenderedBtn?.addEventListener('click', () => {
         analystState.view = 'rendered';
@@ -2496,7 +2641,12 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
         });
       });
 
-      modelSelect?.addEventListener('change', () => updateModelMaxLabel());
+      modelSelect?.addEventListener('change', () => {
+        updateModelMaxLabel();
+        // Reset fallback mode when user manually changes model
+        runClaudeBtn.textContent = 'Run analysis';
+        runClaudeBtn.classList.remove('gemini-fallback');
+      });
 
       loadAnalyticsBtn?.addEventListener('click', loadRefusalAnalytics);
       runClaudeBtn?.addEventListener('click', runClaudeAnalysis);

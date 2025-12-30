@@ -76,8 +76,11 @@ export const buildConfig = (env = process.env) => ({
   anthropicApiKey: env.ANTHROPIC_API_KEY || '',
   anthropicModelOpus: env.ANTHROPIC_MODEL_OPUS || 'claude-3-opus-20240229',
   anthropicModelSonnet: env.ANTHROPIC_MODEL_SONNET || 'claude-3-5-sonnet-20241022',
-  analystMaxItemsOpus: parseInt(env.ANALYST_MAX_ITEMS_OPUS || '200', 10),
-  analystMaxItemsSonnet: parseInt(env.ANALYST_MAX_ITEMS_SONNET || '1000', 10),
+  geminiApiKey: env.GEMINI_API_KEY || '',
+  geminiModel: env.GEMINI_MODEL || 'gemini-2.0-flash',
+  analystMaxItemsOpus: parseInt(env.ANALYST_MAX_ITEMS_OPUS || '150', 10),
+  analystMaxItemsSonnet: parseInt(env.ANALYST_MAX_ITEMS_SONNET || '150', 10),
+  analystMaxItemsGemini: parseInt(env.ANALYST_MAX_ITEMS_GEMINI || '500', 10),
   analystMaxOutputTokens: parseInt(env.ANALYST_MAX_OUTPUT_TOKENS || '1200', 10),
   analystTimeoutMs: parseInt(env.ANALYST_TIMEOUT_MS || '60000', 10),
   gmailClientId: env.GMAIL_CLIENT_ID,
@@ -843,8 +846,10 @@ const buildStatusSnapshot = (ctx) => {
       llm_model: ctx.config.llmModel,
       analyst_max_items_opus: ctx.config.analystMaxItemsOpus,
       analyst_max_items_sonnet: ctx.config.analystMaxItemsSonnet,
+      analyst_max_items_gemini: ctx.config.analystMaxItemsGemini,
       analyst_max_output_tokens: ctx.config.analystMaxOutputTokens,
-      analyst_timeout_ms: ctx.config.analystTimeoutMs
+      analyst_timeout_ms: ctx.config.analystTimeoutMs,
+      gemini_available: !!ctx.config.geminiApiKey
     },
     gpu: gpuData
   };
@@ -1126,23 +1131,40 @@ const startServer = (ctx) => {
   });
 
   app.post('/api/analysis/claude', async (req, res) => {
-    const apiKey = ctx.config.anthropicApiKey;
-    if (!apiKey) {
-      return res.status(400).json({ ok: false, error: 'Missing Anthropic API key' });
-    }
     const body = req.body || {};
     const modelChoice = String(body.model || 'sonnet').toLowerCase();
-    const model =
-      modelChoice === 'opus' ? ctx.config.anthropicModelOpus : ctx.config.anthropicModelSonnet;
-    const maxItemsCap =
-      modelChoice === 'opus' ? ctx.config.analystMaxItemsOpus : ctx.config.analystMaxItemsSonnet;
-    const maxItems = clampNumber(body.max_items, 1, maxItemsCap, Math.min(200, maxItemsCap));
+    const isGemini = modelChoice === 'gemini';
+
+    // Check API key availability
+    if (isGemini) {
+      if (!ctx.config.geminiApiKey) {
+        return res.status(400).json({ ok: false, error: 'Missing Gemini API key' });
+      }
+    } else {
+      if (!ctx.config.anthropicApiKey) {
+        return res.status(400).json({ ok: false, error: 'Missing Anthropic API key' });
+      }
+    }
+
+    let model, maxItemsCap;
+    if (isGemini) {
+      model = ctx.config.geminiModel;
+      maxItemsCap = ctx.config.analystMaxItemsGemini;
+    } else if (modelChoice === 'opus') {
+      model = ctx.config.anthropicModelOpus;
+      maxItemsCap = ctx.config.analystMaxItemsOpus;
+    } else {
+      model = ctx.config.anthropicModelSonnet;
+      maxItemsCap = ctx.config.analystMaxItemsSonnet;
+    }
+
+    const maxItems = clampNumber(body.max_items, 1, maxItemsCap, Math.min(maxItemsCap, maxItemsCap));
     const filters = { ...(body.filters || {}), start_hours: body.start_hours, end_hours: body.end_hours, hours: body.hours, days: body.days };
     const current = ctx.stateManager.getState();
     const decisions = current.recent_decisions || [];
     const { startHours, endHours, selected } = selectAnalysisCases(decisions, filters, { maxItems });
     if (!selected.length) {
-      return res.json({ ok: true, model, count: 0, result: 'No refusals matched the filters.' });
+      return res.json({ ok: true, model, count: 0, result: 'No refusals matched the filters.', provider: isGemini ? 'gemini' : 'anthropic' });
     }
 
     const filterSummaryParts = [];
@@ -1166,43 +1188,86 @@ const startServer = (ctx) => {
       filtersSummary: filterSummary
     });
 
-    const payload = {
-      model,
-      max_tokens: clampNumber(body.max_tokens, 200, 4000, ctx.config.analystMaxOutputTokens),
-      temperature: clampNumber(body.temperature, 0, 1, 0),
-      system:
-        'You are a focused email triage auditor. Be concise, decisive, and prefer structured bullet summaries. Default to notify=true only when action/security/family/finance/operations are impacted.',
-      messages: [{ role: 'user', content: prompt }]
-    };
+    const systemPrompt = 'You are a focused email triage auditor. Be concise, decisive, and prefer structured bullet summaries. Default to notify=true only when action/security/family/finance/operations are impacted.';
 
-    try {
-      const apiRes = await axios.post('https://api.anthropic.com/v1/messages', payload, {
-        headers: {
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01'
-        },
-        timeout: ctx.config.analystTimeoutMs
-      });
-      const contentArr = apiRes.data?.content || [];
-      const text = contentArr
-        .map((c) => c.text)
-        .filter(Boolean)
-        .join('\n')
-        .trim();
-      res.json({
-        ok: true,
+    if (isGemini) {
+      // Gemini API call
+      try {
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${ctx.config.geminiApiKey}`;
+        const geminiPayload = {
+          contents: [{ parts: [{ text: systemPrompt + '\n\n' + prompt }] }],
+          generationConfig: {
+            temperature: clampNumber(body.temperature, 0, 1, 0),
+            maxOutputTokens: clampNumber(body.max_tokens, 200, 8000, ctx.config.analystMaxOutputTokens)
+          }
+        };
+        const apiRes = await axios.post(geminiUrl, geminiPayload, {
+          timeout: ctx.config.analystTimeoutMs
+        });
+        const candidates = apiRes.data?.candidates || [];
+        const text = candidates
+          .map((c) => c.content?.parts?.map((p) => p.text).join(''))
+          .filter(Boolean)
+          .join('\n')
+          .trim();
+        res.json({
+          ok: true,
+          model,
+          provider: 'gemini',
+          count: selected.length,
+          window_hours: windowDesc,
+          filters: filters,
+          result: text || '(empty response)'
+        });
+      } catch (err) {
+        const apiMsg = err.response?.data?.error?.message || err.response?.data?.message;
+        res.status(502).json({
+          ok: false,
+          provider: 'gemini',
+          error: apiMsg || err.message || 'Gemini request failed'
+        });
+      }
+    } else {
+      // Anthropic API call
+      const payload = {
         model,
-        count: selected.length,
-        window_hours: windowDesc,
-        filters: filters,
-        result: text || '(empty response)'
-      });
-    } catch (err) {
-      const apiMsg = err.response?.data?.error?.message || err.response?.data?.message;
-      res.status(502).json({
-        ok: false,
-        error: apiMsg || err.message || 'Anthropic request failed'
-      });
+        max_tokens: clampNumber(body.max_tokens, 200, 4000, ctx.config.analystMaxOutputTokens),
+        temperature: clampNumber(body.temperature, 0, 1, 0),
+        system: systemPrompt,
+        messages: [{ role: 'user', content: prompt }]
+      };
+
+      try {
+        const apiRes = await axios.post('https://api.anthropic.com/v1/messages', payload, {
+          headers: {
+            'x-api-key': ctx.config.anthropicApiKey,
+            'anthropic-version': '2023-06-01'
+          },
+          timeout: ctx.config.analystTimeoutMs
+        });
+        const contentArr = apiRes.data?.content || [];
+        const text = contentArr
+          .map((c) => c.text)
+          .filter(Boolean)
+          .join('\n')
+          .trim();
+        res.json({
+          ok: true,
+          model,
+          provider: 'anthropic',
+          count: selected.length,
+          window_hours: windowDesc,
+          filters: filters,
+          result: text || '(empty response)'
+        });
+      } catch (err) {
+        const apiMsg = err.response?.data?.error?.message || err.response?.data?.message;
+        res.status(502).json({
+          ok: false,
+          provider: 'anthropic',
+          error: apiMsg || err.message || 'Anthropic request failed'
+        });
+      }
     }
   });
 
