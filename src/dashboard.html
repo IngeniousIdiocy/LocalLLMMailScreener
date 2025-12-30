@@ -939,6 +939,21 @@
       padding: 1px 5px;
       border-radius: 4px;
       font-size: 11px;
+    }
+
+    .signal-chip.clickable {
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .signal-chip.clickable:hover {
+      background: rgba(255,255,255,0.1);
+      border-color: var(--accent);
+    }
+
+    .signal-chip.clickable.active {
+      background: rgba(65,214,255,0.15);
+      border-color: var(--accent);
       font-weight: 600;
     }
 
@@ -2357,6 +2372,9 @@ const analystState = { enabled: false, view: 'rendered', cfg: {}, refusalsLoaded
         .join('');
     };
 
+    // Track active bucket filter for Latest Refusals
+    let activeBucketFilter = null;
+
     const renderTopSignals = (analytics, bucketData = {}) => {
       const renderSection = (arr, label) => {
         if (!arr || !arr.length) return '';
@@ -2373,7 +2391,7 @@ const analystState = { enabled: false, view: 'rendered', cfg: {}, refusalsLoaded
 
       let reasonsSection = '';
       if (hasBuckets) {
-        // Show bucketed reasons with counts
+        // Show ALL bucketed reasons with counts (clickable)
         const bucketCounts = new Map();
         reasonAssignments.forEach((a) => {
           const key = a.bucket || 'Other';
@@ -2382,7 +2400,11 @@ const analystState = { enabled: false, view: 'rendered', cfg: {}, refusalsLoaded
         const bucketArr = Array.from(bucketCounts.entries())
           .map(([label, count]) => ({ label, count }))
           .sort((a, b) => b.count - a.count);
-        reasonsSection = renderSection(bucketArr, 'Top Reasons');
+        const chips = bucketArr.map((r) => {
+          const isActive = activeBucketFilter === r.label;
+          return `<span class="signal-chip clickable${isActive ? ' active' : ''}" data-bucket="${escapeHtml(r.label)}">${escapeHtml(r.label)}<span class="count">${r.count}</span></span>`;
+        }).join('');
+        reasonsSection = `<div class="signal-section"><div class="signal-label">Top Reasons</div><div class="signal-items">${chips}</div></div>`;
       } else {
         // Show button to bucket reasons
         reasonsSection = `<div class="signal-section"><div class="signal-label">Top Reasons</div><div class="signal-items"><button class="btn secondary small" id="top-signals-bucket-btn">Bucket reasons with Gemini</button><span class="analyst-meta" id="top-signals-bucket-status"></span></div></div>`;
@@ -2402,6 +2424,27 @@ const analystState = { enabled: false, view: 'rendered', cfg: {}, refusalsLoaded
       if (topSignalsBucketBtn) {
         topSignalsBucketBtn.addEventListener('click', runReasonBucketing);
       }
+
+      // Attach click handlers for clickable bucket chips
+      topSignals.querySelectorAll('.signal-chip.clickable').forEach((chip) => {
+        chip.addEventListener('click', () => {
+          const bucket = chip.dataset.bucket;
+          if (activeBucketFilter === bucket) {
+            // Toggle off - show all refusals
+            activeBucketFilter = null;
+            renderLatestRefusals(chartDataCache.latest || []);
+          } else {
+            // Filter to this bucket
+            activeBucketFilter = bucket;
+            const assignments = chartDataCache.reasonAssignments || [];
+            const idsInBucket = new Set(assignments.filter((a) => a.bucket === bucket).map((a) => a.id));
+            const filtered = (chartDataCache.latest || []).filter((r) => idsInBucket.has(r.id));
+            renderLatestRefusals(filtered);
+          }
+          // Re-render top signals to update active state
+          renderTopSignals(chartDataCache, chartDataCache);
+        });
+      });
     };
 
     const renderLatestRefusals = (latest = []) => {
@@ -2457,8 +2500,9 @@ const analystState = { enabled: false, view: 'rendered', cfg: {}, refusalsLoaded
       chartDrillStack = [];
       if (chartBackBtn) chartBackBtn.disabled = true;
       if (chartRangeLabel) chartRangeLabel.textContent = '';
-      // Clear bucket data when filters change - user must re-bucket
+      // Clear bucket data and filter when filters change - user must re-bucket
       if (reasonBucketsStatus) reasonBucketsStatus.textContent = '';
+      activeBucketFilter = null;
       try {
         const params = buildFilterParams();
         const res = await fetch(`/api/analytics/refusals?${params.toString()}`);
