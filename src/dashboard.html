@@ -2167,9 +2167,7 @@
 
         // Color based on number of filled blocks (1-8: blue, 9-13: orange, 14-15: red)
         let color;
-        if (inProgress) {
-          color = 'rgba(65, 214, 255, 0.4)';
-        } else if (filledLevels >= 13) {
+        if (filledLevels >= 13) {
           color = 'rgba(239, 68, 68, 0.9)';
         } else if (filledLevels >= 9) {
           color = 'rgba(245, 158, 11, 0.9)';
