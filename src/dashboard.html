@@ -774,6 +774,16 @@
   margin-left: 8px;
 }
 
+#chart-back,
+#chart-range-label {
+  display: none;
+}
+
+#chart-back.visible,
+#chart-range-label.visible {
+  display: inline;
+}
+
 .chart-area {
   background: rgba(0,0,0,0.25);
   border: 1px solid var(--glass-border);
@@ -915,6 +925,31 @@
       margin-bottom: 6px;
     }
 
+    .signal-label.collapsible {
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      user-select: none;
+    }
+
+    .signal-label.collapsible:hover {
+      color: var(--text);
+    }
+
+    .signal-label .collapse-arrow {
+      font-size: 10px;
+      transition: transform 0.2s ease;
+    }
+
+    .signal-label.collapsed .collapse-arrow {
+      transform: rotate(-90deg);
+    }
+
+    .signal-section.collapsed .signal-items {
+      display: none;
+    }
+
     .signal-items {
       display: flex;
       flex-wrap: wrap;
@@ -957,6 +992,34 @@
       font-weight: 600;
     }
 
+    .bucket-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: 8px;
+    }
+
+    .stale-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--warning, #f0ad4e);
+    }
+
+    .bucket-actions .refresh-btn {
+      background: none;
+      border: none;
+      color: var(--accent);
+      cursor: pointer;
+      padding: 2px 6px;
+      font-size: 11px;
+      text-decoration: underline;
+    }
+
+    .bucket-actions .refresh-btn:hover {
+      color: var(--text);
+    }
 
     /* GPU Panel */
     .gpu-section .card-header {
@@ -1522,8 +1585,6 @@
         <div class="claude-pane signals-pane">
           <div class="card-title">Top Signals</div>
           <div id="top-signals"></div>
-          <div class="signal-label" style="margin-top:12px;">Hourly Distribution</div>
-          <div class="list-scroll wrap" id="bucket-list"></div>
         </div>
       </div>
     </div>
@@ -1589,7 +1650,6 @@
     const analystStatus = document.getElementById('analyst-status');
     const analystTitle = document.getElementById('analyst-title');
     const analystWindowLabel = document.getElementById('analyst-window-label');
-    const bucketList = document.getElementById('bucket-list');
     const latestRefusals = document.getElementById('latest-refusals');
     const topSignals = document.getElementById('top-signals');
     const signalsPane = document.querySelector('.signals-pane');
@@ -2245,6 +2305,8 @@ const analystState = { enabled: false, view: 'rendered', cfg: {}, refusalsLoaded
     let chartInstance = null;
     let chartDataCache = null;
     let chartDrillStack = [];
+    let bucketSampleIds = null;  // Track sample IDs when buckets were computed
+    let bucketsStale = false;    // True if data has changed since bucketing
     const MIN_BIN_WIDTH = 0.01;
 
     const updateWindowLabel = () => {
@@ -2366,10 +2428,16 @@ const analystState = { enabled: false, view: 'rendered', cfg: {}, refusalsLoaded
           reasonBuckets: data.buckets || [],
           reasonAssignments: data.assignments || []
         };
+        // Save the sample IDs that were used for bucketing and reset stale flag
+        bucketSampleIds = new Set((chartDataCache.samples || []).map(s => s.id));
+        bucketsStale = false;
+        activeBucketFilter = null;  // Reset filter when re-bucketing
         const bucketCount = (data.buckets || []).length;
         if (reasonBucketsStatus) reasonBucketsStatus.textContent = `Buckets ready (${bucketCount})`;
         // Re-render top signals with bucket data
         renderTopSignals(chartDataCache, chartDataCache);
+        // Re-render latest refusals without filter
+        renderLatestRefusals(chartDataCache.latest || []);
         // Re-render chart if active
         renderChart(chartSelect?.value || 'none', chartDataCache);
       } catch (err) {
@@ -2379,32 +2447,93 @@ const analystState = { enabled: false, view: 'rendered', cfg: {}, refusalsLoaded
       }
     };
 
-    const renderBuckets = (buckets = []) => {
-      if (!buckets.length) {
-        bucketList.innerHTML = '<div class="analyst-meta">No refusals in range.</div>';
-        return;
-      }
-      bucketList.innerHTML = buckets
-        .map((b) => `<span class="signal-chip">${escapeHtml(b.label)}<span class="count">${b.count}</span></span>`)
-        .join('');
+    // Track active bucket filter for Latest Refusals and collapse states
+    let activeBucketFilter = null;
+    const collapseStates = {
+      'top-senders': false,    // open by default
+      'top-domains': false,    // open by default
+      'hourly-dist': true      // closed by default
     };
 
-    // Track active bucket filter for Latest Refusals
-    let activeBucketFilter = null;
+    // Helper to extract domain from email
+    const domainFromEmail = (email) => {
+      if (!email) return '';
+      const match = String(email).toLowerCase().match(/@([^>]+)>?$/);
+      if (match && match[1]) return match[1];
+      const parts = String(email).split('@');
+      return parts[1] ? parts[1].toLowerCase() : '';
+    };
+
+    // Helper to compute top counts from array
+    const computeTopCounts = (arr, keyFn, limit = 6) => {
+      const counts = new Map();
+      arr.forEach((item) => {
+        const key = keyFn(item);
+        if (key) counts.set(key, (counts.get(key) || 0) + 1);
+      });
+      return Array.from(counts.entries())
+        .map(([label, count]) => ({ label, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, limit);
+    };
+
+    // Helper to bucket samples by hour
+    const bucketByHour = (samples) => {
+      const hourCounts = new Map();
+      samples.forEach((s) => {
+        if (!s.decided_at) return;
+        const d = new Date(s.decided_at);
+        const hour = d.getHours();
+        const label = `${hour.toString().padStart(2, '0')}:00`;
+        hourCounts.set(label, (hourCounts.get(label) || 0) + 1);
+      });
+      // Sort by hour
+      return Array.from(hourCounts.entries())
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([label, count]) => ({ label, count }));
+    };
 
     const renderTopSignals = (analytics, bucketData = {}) => {
-      const renderSection = (arr, label) => {
+      const renderCollapsibleSection = (arr, label, sectionId) => {
         if (!arr || !arr.length) return '';
+        const isCollapsed = collapseStates[sectionId];
         const chips = arr.slice(0, 6).map((r) =>
           `<span class="signal-chip">${escapeHtml(r.label)}<span class="count">${r.count}</span></span>`
         ).join('');
-        return `<div class="signal-section"><div class="signal-label">${label}</div><div class="signal-items">${chips}</div></div>`;
+        return `<div class="signal-section${isCollapsed ? ' collapsed' : ''}" data-section-id="${sectionId}">
+          <div class="signal-label collapsible${isCollapsed ? ' collapsed' : ''}" data-toggle="${sectionId}">
+            <span class="collapse-arrow">▼</span>${label}
+          </div>
+          <div class="signal-items">${chips}</div>
+        </div>`;
       };
 
       // Check if we have bucketed reasons
       const reasonBuckets = bucketData.reasonBuckets || [];
       const reasonAssignments = bucketData.reasonAssignments || [];
       const hasBuckets = reasonBuckets.length > 0 && reasonAssignments.length > 0;
+
+      // Get filtered sample IDs if a bucket filter is active
+      let filteredSampleIds = null;
+      if (activeBucketFilter && hasBuckets) {
+        filteredSampleIds = new Set(
+          reasonAssignments.filter((a) => a.bucket === activeBucketFilter).map((a) => a.id)
+        );
+      }
+
+      // Compute filtered data for senders/domains/hourly
+      const samples = analytics.samples || [];
+      const filteredSamples = filteredSampleIds
+        ? samples.filter((s) => filteredSampleIds.has(s.id))
+        : samples;
+
+      const topSenders = filteredSampleIds
+        ? computeTopCounts(filteredSamples, (s) => (s.from || '').toLowerCase())
+        : analytics.top_senders || [];
+      const topDomains = filteredSampleIds
+        ? computeTopCounts(filteredSamples, (s) => domainFromEmail(s.from))
+        : analytics.top_domains || [];
+      const hourlyBuckets = bucketByHour(filteredSamples);
 
       let reasonsSection = '';
       if (hasBuckets) {
@@ -2421,7 +2550,10 @@ const analystState = { enabled: false, view: 'rendered', cfg: {}, refusalsLoaded
           const isActive = activeBucketFilter === r.label;
           return `<span class="signal-chip clickable${isActive ? ' active' : ''}" data-bucket="${escapeHtml(r.label)}">${escapeHtml(r.label)}<span class="count">${r.count}</span></span>`;
         }).join('');
-        reasonsSection = `<div class="signal-section"><div class="signal-label">Top Reasons</div><div class="signal-items">${chips}</div></div>`;
+        // Show bucket actions - stale warning if applicable, plus clear/rebucket options
+        const staleWarning = bucketsStale ? `<span class="stale-indicator">⚠ Data changed</span>` : '';
+        const bucketActions = `<span class="bucket-actions">${staleWarning}<button class="refresh-btn" id="rebucket-btn">Re-bucket</button><button class="refresh-btn" id="clear-buckets-btn">Clear</button><span class="analyst-meta" id="bucket-action-status"></span></span>`;
+        reasonsSection = `<div class="signal-section"><div class="signal-label">Top Reasons${bucketActions}</div><div class="signal-items">${chips}</div></div>`;
       } else {
         // Show button to bucket reasons
         reasonsSection = `<div class="signal-section"><div class="signal-label">Top Reasons</div><div class="signal-items"><button class="btn secondary small" id="top-signals-bucket-btn">Bucket reasons with Gemini</button><span class="analyst-meta" id="top-signals-bucket-status"></span></div></div>`;
@@ -2429,8 +2561,9 @@ const analystState = { enabled: false, view: 'rendered', cfg: {}, refusalsLoaded
 
       const sections = [
         reasonsSection,
-        renderSection(analytics.top_senders, 'Top Senders'),
-        renderSection(analytics.top_domains, 'Top Domains')
+        renderCollapsibleSection(topSenders, 'Top Senders', 'top-senders'),
+        renderCollapsibleSection(topDomains, 'Top Domains', 'top-domains'),
+        renderCollapsibleSection(hourlyBuckets, 'Hourly Distribution', 'hourly-dist')
       ].filter(Boolean);
 
       topSignals.innerHTML = sections.length ? sections.join('') : '<div class="analyst-meta">No signals found</div>';
@@ -2441,6 +2574,49 @@ const analystState = { enabled: false, view: 'rendered', cfg: {}, refusalsLoaded
       if (topSignalsBucketBtn) {
         topSignalsBucketBtn.addEventListener('click', runReasonBucketing);
       }
+
+      // Attach click handler for the rebucket button
+      const rebucketBtn = document.getElementById('rebucket-btn');
+      if (rebucketBtn) {
+        rebucketBtn.addEventListener('click', (e) => {
+          e.stopPropagation();  // Don't trigger parent clicks
+          const statusEl = document.getElementById('bucket-action-status');
+          if (statusEl) statusEl.textContent = 'Bucketing...';
+          runReasonBucketing();
+        });
+      }
+
+      // Attach click handler for clear buckets button
+      const clearBucketsBtn = document.getElementById('clear-buckets-btn');
+      if (clearBucketsBtn) {
+        clearBucketsBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          // Clear all bucket state
+          if (chartDataCache) {
+            chartDataCache.reasonBuckets = [];
+            chartDataCache.reasonAssignments = [];
+          }
+          bucketSampleIds = null;
+          bucketsStale = false;
+          activeBucketFilter = null;
+          // Re-render to show bucket button again
+          renderTopSignals(chartDataCache, {});
+          renderLatestRefusals(chartDataCache?.latest || []);
+        });
+      }
+
+      // Attach click handlers for collapsible section toggles
+      topSignals.querySelectorAll('.signal-label.collapsible').forEach((label) => {
+        label.addEventListener('click', () => {
+          const sectionId = label.dataset.toggle;
+          collapseStates[sectionId] = !collapseStates[sectionId];
+          const section = topSignals.querySelector(`[data-section-id="${sectionId}"]`);
+          if (section) {
+            section.classList.toggle('collapsed', collapseStates[sectionId]);
+            label.classList.toggle('collapsed', collapseStates[sectionId]);
+          }
+        });
+      });
 
       // Attach click handlers for clickable bucket chips
       topSignals.querySelectorAll('.signal-chip.clickable').forEach((chip) => {
@@ -2458,7 +2634,7 @@ const analystState = { enabled: false, view: 'rendered', cfg: {}, refusalsLoaded
             const filtered = (chartDataCache.latest || []).filter((r) => idsInBucket.has(r.id));
             renderLatestRefusals(filtered);
           }
-          // Re-render top signals to update active state
+          // Re-render top signals to update active state and filtered data
           renderTopSignals(chartDataCache, chartDataCache);
         });
       });
@@ -2517,9 +2693,7 @@ const analystState = { enabled: false, view: 'rendered', cfg: {}, refusalsLoaded
       chartDrillStack = [];
       if (chartBackBtn) chartBackBtn.disabled = true;
       if (chartRangeLabel) chartRangeLabel.textContent = '';
-      // Clear bucket data and filter when filters change - user must re-bucket
       if (reasonBucketsStatus) reasonBucketsStatus.textContent = '';
-      activeBucketFilter = null;
       try {
         const params = buildFilterParams();
         const res = await fetch(`/api/analytics/refusals?${params.toString()}`);
@@ -2538,12 +2712,42 @@ const analystState = { enabled: false, view: 'rendered', cfg: {}, refusalsLoaded
         }
         updateModelMaxLabel();
 
-        renderBuckets(data.buckets || []);
-        // Clear reason buckets - pass empty bucket data to show the bucket button
-        renderTopSignals(data, {});
-        renderLatestRefusals(data.latest || []);
-        // Store data but clear any previous bucket results
-        chartDataCache = { ...data, reasonBuckets: [], reasonAssignments: [] };
+        // Check if we have existing bucket data to preserve
+        const existingBuckets = chartDataCache?.reasonBuckets || [];
+        const existingAssignments = chartDataCache?.reasonAssignments || [];
+        const hasBuckets = existingBuckets.length > 0 && existingAssignments.length > 0;
+
+        // Check if data has changed (new samples or different samples)
+        const newSampleIds = new Set((data.samples || []).map(s => s.id));
+        if (hasBuckets && bucketSampleIds) {
+          // Check if samples have changed
+          const sameSize = newSampleIds.size === bucketSampleIds.size;
+          const allMatch = sameSize && [...bucketSampleIds].every(id => newSampleIds.has(id));
+          bucketsStale = !allMatch;
+        }
+
+        // Preserve existing bucket data, just update with new sample data
+        const bucketData = hasBuckets
+          ? { reasonBuckets: existingBuckets, reasonAssignments: existingAssignments }
+          : {};
+
+        renderTopSignals(data, bucketData);
+
+        // Filter latest refusals if bucket filter is active
+        if (activeBucketFilter && hasBuckets) {
+          const idsInBucket = new Set(existingAssignments.filter(a => a.bucket === activeBucketFilter).map(a => a.id));
+          const filtered = (data.latest || []).filter(r => idsInBucket.has(r.id));
+          renderLatestRefusals(filtered);
+        } else {
+          renderLatestRefusals(data.latest || []);
+        }
+
+        // Store data but preserve bucket results if they exist
+        chartDataCache = {
+          ...data,
+          reasonBuckets: existingBuckets,
+          reasonAssignments: existingAssignments
+        };
         if (chartSelect) renderChart(chartSelect.value, chartDataCache);
         analystState.refusalsLoaded = true;
       } catch (e) {
@@ -2751,7 +2955,8 @@ const analystState = { enabled: false, view: 'rendered', cfg: {}, refusalsLoaded
         const wasCollapsed = analystSection?.classList.contains('collapsed');
         analystSection?.classList.toggle('collapsed');
         analystState.enabled = wasCollapsed;
-        if (wasCollapsed) {
+        // Only load if not already loaded - preserve state on collapse/reopen
+        if (wasCollapsed && !analystState.refusalsLoaded) {
           loadRefusalAnalytics();
         }
       };
@@ -2770,6 +2975,10 @@ const analystState = { enabled: false, view: 'rendered', cfg: {}, refusalsLoaded
       chartSelect?.addEventListener('change', (e) => {
         const val = e.target.value;
         chartDrillStack = [];
+        // Show/hide Back button and range label only for confidence histogram
+        const isConfHist = val === 'confidence-hist';
+        chartBackBtn?.classList.toggle('visible', isConfHist);
+        chartRangeLabel?.classList.toggle('visible', isConfHist);
         renderChart(val, chartDataCache);
       });
 
