@@ -38,6 +38,19 @@ const logEvent = (tag, fields = {}) => {
   log(`[${tag}]`, parts.join(' '));
 };
 
+// Global error handlers to prevent server crashes
+process.on('uncaughtException', (err) => {
+  log('[FATAL] Uncaught exception (server continuing):', err.message);
+  console.error(err.stack);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  log('[FATAL] Unhandled promise rejection (server continuing):', reason);
+  if (reason instanceof Error) {
+    console.error(reason.stack);
+  }
+});
+
 const buildGmailQuery = (baseQuery, afterMs) => {
   const trimmed = (baseQuery || '').trim();
   const query = trimmed.length ? trimmed : 'newer_than:1d';
@@ -1272,16 +1285,32 @@ const startServer = (ctx) => {
   });
 
   app.post('/api/analysis/reasons', async (req, res) => {
-    const apiKey = ctx.config.anthropicApiKey;
-    if (!apiKey) {
-      return res.status(400).json({ ok: false, error: 'Missing Anthropic API key' });
-    }
     const body = req.body || {};
     const modelChoice = String(body.model || 'sonnet').toLowerCase();
-    const model =
-      modelChoice === 'opus' ? ctx.config.anthropicModelOpus : ctx.config.anthropicModelSonnet;
-    const maxItemsCap =
-      modelChoice === 'opus' ? ctx.config.analystMaxItemsOpus : ctx.config.analystMaxItemsSonnet;
+    const isGemini = modelChoice === 'gemini';
+
+    // Check API key availability
+    if (isGemini) {
+      if (!ctx.config.geminiApiKey) {
+        return res.status(400).json({ ok: false, error: 'Missing Gemini API key' });
+      }
+    } else {
+      if (!ctx.config.anthropicApiKey) {
+        return res.status(400).json({ ok: false, error: 'Missing Anthropic API key' });
+      }
+    }
+
+    let model, maxItemsCap;
+    if (isGemini) {
+      model = ctx.config.geminiModel;
+      maxItemsCap = ctx.config.analystMaxItemsGemini;
+    } else if (modelChoice === 'opus') {
+      model = ctx.config.anthropicModelOpus;
+      maxItemsCap = ctx.config.analystMaxItemsOpus;
+    } else {
+      model = ctx.config.anthropicModelSonnet;
+      maxItemsCap = ctx.config.analystMaxItemsSonnet;
+    }
     const maxItems = clampNumber(body.max_items, 1, maxItemsCap, maxItemsCap);
     const filters = { ...(body.filters || {}), start_hours: body.start_hours, end_hours: body.end_hours, hours: body.hours, days: body.days };
     const current = ctx.stateManager.getState();
@@ -1307,55 +1336,106 @@ const startServer = (ctx) => {
     const filterSummary = filterSummaryParts.join(', ');
 
     const maxBuckets = clampNumber(body.max_buckets, 3, 10, 8);
+    const windowHours = body.start_hours || 24;
     const prompt = buildReasonBucketsPrompt({
       items: selected,
-      windowHours: hours,
+      windowHours,
       filtersSummary: filterSummary,
       maxBuckets
     });
 
-    const payload = {
-      model,
-      max_tokens: clampNumber(body.max_tokens, 500, 4000, ctx.config.analystMaxOutputTokens),
-      temperature: 0,
-      system: 'You are a concise classifier. Return strict JSON with bucket definitions and assignments.',
-      messages: [{ role: 'user', content: prompt }]
-    };
+    const systemPrompt = 'You are a concise classifier. Return strict JSON with bucket definitions and assignments.';
 
-    try {
-      const apiRes = await axios.post('https://api.anthropic.com/v1/messages', payload, {
-        headers: {
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01'
-        },
-        timeout: ctx.config.analystTimeoutMs
-      });
-      const contentArr = apiRes.data?.content || [];
-      const text = contentArr
-        .map((c) => c.text)
-        .filter(Boolean)
-        .join('\n')
-        .trim();
-      const parsed = parseJsonFromText(text);
-      if (!parsed) {
-        return res.status(502).json({ ok: false, error: 'Claude returned non-JSON bucket data' });
+    if (isGemini) {
+      // Gemini API call
+      try {
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${ctx.config.geminiApiKey}`;
+        const geminiPayload = {
+          contents: [{ parts: [{ text: systemPrompt + '\n\n' + prompt }] }],
+          generationConfig: {
+            temperature: 0,
+            maxOutputTokens: clampNumber(body.max_tokens, 500, 8000, ctx.config.analystMaxOutputTokens)
+          }
+        };
+        const apiRes = await axios.post(geminiUrl, geminiPayload, {
+          timeout: ctx.config.analystTimeoutMs
+        });
+        const candidates = apiRes.data?.candidates || [];
+        const text = candidates
+          .map((c) => c.content?.parts?.map((p) => p.text).join(''))
+          .filter(Boolean)
+          .join('\n')
+          .trim();
+        const parsed = parseJsonFromText(text);
+        if (!parsed) {
+          return res.status(502).json({ ok: false, provider: 'gemini', error: 'Gemini returned non-JSON bucket data' });
+        }
+        const buckets = Array.isArray(parsed.buckets) ? parsed.buckets : [];
+        const assignments = Array.isArray(parsed.assignments) ? parsed.assignments : [];
+        res.json({
+          ok: true,
+          model,
+          provider: 'gemini',
+          count: selected.length,
+          window_hours: windowHours,
+          buckets,
+          assignments
+        });
+      } catch (err) {
+        const apiMsg = err.response?.data?.error?.message || err.response?.data?.message;
+        res.status(502).json({
+          ok: false,
+          provider: 'gemini',
+          error: apiMsg || err.message || 'Gemini request failed'
+        });
       }
-      const buckets = Array.isArray(parsed.buckets) ? parsed.buckets : [];
-      const assignments = Array.isArray(parsed.assignments) ? parsed.assignments : [];
-      res.json({
-        ok: true,
+    } else {
+      // Anthropic API call
+      const payload = {
         model,
-        count: selected.length,
-        window_hours: hours,
-        buckets,
-        assignments
-      });
-    } catch (err) {
-      const apiMsg = err.response?.data?.error?.message || err.response?.data?.message;
-      res.status(502).json({
-        ok: false,
-        error: apiMsg || err.message || 'Anthropic request failed'
-      });
+        max_tokens: clampNumber(body.max_tokens, 500, 4000, ctx.config.analystMaxOutputTokens),
+        temperature: 0,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: prompt }]
+      };
+
+      try {
+        const apiRes = await axios.post('https://api.anthropic.com/v1/messages', payload, {
+          headers: {
+            'x-api-key': ctx.config.anthropicApiKey,
+            'anthropic-version': '2023-06-01'
+          },
+          timeout: ctx.config.analystTimeoutMs
+        });
+        const contentArr = apiRes.data?.content || [];
+        const text = contentArr
+          .map((c) => c.text)
+          .filter(Boolean)
+          .join('\n')
+          .trim();
+        const parsed = parseJsonFromText(text);
+        if (!parsed) {
+          return res.status(502).json({ ok: false, provider: 'anthropic', error: 'Claude returned non-JSON bucket data' });
+        }
+        const buckets = Array.isArray(parsed.buckets) ? parsed.buckets : [];
+        const assignments = Array.isArray(parsed.assignments) ? parsed.assignments : [];
+        res.json({
+          ok: true,
+          model,
+          provider: 'anthropic',
+          count: selected.length,
+          window_hours: windowHours,
+          buckets,
+          assignments
+        });
+      } catch (err) {
+        const apiMsg = err.response?.data?.error?.message || err.response?.data?.message;
+        res.status(502).json({
+          ok: false,
+          provider: 'anthropic',
+          error: apiMsg || err.message || 'Anthropic request failed'
+        });
+      }
     }
   });
 

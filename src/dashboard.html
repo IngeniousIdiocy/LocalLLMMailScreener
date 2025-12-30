@@ -724,6 +724,8 @@
     .signals-pane {
       /* No overflow - content determines height */
       overflow: visible;
+      /* Span full width of grid when it's the only item */
+      grid-column: 1 / -1;
     }
     
     .signals-pane .list-scroll {
@@ -1116,6 +1118,17 @@
       .advanced-filters .control.checkbox-grid {
         width: 100%;
       }
+
+      /* Fix nested Top Signals pane inside analyst mode to prevent overflow */
+      .analyst-section .grid-halves {
+        margin-left: 0;
+        margin-right: 0;
+      }
+
+      .analyst-section .claude-pane {
+        padding: 10px;
+        overflow: hidden;
+      }
     }
 
     /* Gmail Token Refresh Modal */
@@ -1478,7 +1491,7 @@
               <option value="risk-mix">URL/Attachment mix</option>
               <option value="removed-sections">Removed sections impact</option>
             </select>
-            <button class="btn secondary small" id="run-reason-buckets">Bucket reasons with Claude</button>
+            <button class="btn secondary small" id="run-reason-buckets">Bucket reasons with Gemini</button>
             <span class="analyst-meta" id="reason-buckets-status"></span>
             <button class="btn secondary small" id="chart-back" disabled>Back</button>
             <span class="chart-range-label" id="chart-range-label"></span>
@@ -2198,7 +2211,7 @@
       gpuLegend.innerHTML = `<span class="gpu-legend-block"></span> = peak GPU utilization over ${timeLabel}`;
     };
 
-const analystState = { enabled: false, view: 'rendered', cfg: {} };
+const analystState = { enabled: false, view: 'rendered', cfg: {}, refusalsLoaded: false };
     let chartInstance = null;
     let chartDataCache = null;
     let chartDrillStack = [];
@@ -2371,10 +2384,12 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
         renderLatestRefusals(data.latest || []);
         chartDataCache = { ...(chartDataCache || {}), ...data };
         if (chartSelect) renderChart(chartSelect.value, chartDataCache);
+        analystState.refusalsLoaded = true;
       } catch (e) {
         console.error('Analytics fetch failed', e);
         analystStatus.textContent = 'Failed to load refusals';
         analystStatus.style.color = 'var(--danger)';
+        analystState.refusalsLoaded = false;
       }
     };
 
@@ -2546,7 +2561,12 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
 
     // Wire up refusals collapse toggle
     const toggleRefusals = () => {
+      const wasCollapsed = refusalsSection?.classList.contains('collapsed');
       refusalsSection?.classList.toggle('collapsed');
+      // Load refusals when expanding if not already loaded
+      if (wasCollapsed && !analystState.refusalsLoaded) {
+        loadRefusalAnalytics();
+      }
     };
     refusalsHeader?.addEventListener('click', toggleRefusals);
 
@@ -2697,7 +2717,7 @@ const analystState = { enabled: false, view: 'rendered', cfg: {} };
         if (hasMismatch.checked) filters.has_mismatched_urls = true;
         const limit = updateModelMaxLabel();
         const payload = {
-          model: modelSelect.value,
+          model: 'gemini',
           max_items: limit,
           start_hours: Math.max(1, startHoursVal + startDaysVal * 24),
           end_hours: endHoursVal + endDaysVal * 24,
