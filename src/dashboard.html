@@ -1659,6 +1659,14 @@
     };
 
     const fmtComma = (n) => (n || 0).toLocaleString();
+    const fmtDuration = (ms) => {
+      if (!ms || ms < 0) return '—';
+      const totalSec = Math.floor(ms / 1000);
+      const h = Math.floor(totalSec / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
+      const s = totalSec % 60;
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    };
     const escapeHtml = (str = '') => String(str)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
@@ -2021,6 +2029,13 @@
         const fixGmailFooter = item.key === 'gmail' && !ok
           ? `<div class="card-footer"><button class="btn fix-gmail" id="fix-gmail-btn">Fix Gmail Token</button></div>`
           : '';
+        // Gmail-specific poll interval and time since last success
+        const gmailPollIntervalLine = item.key === 'gmail'
+          ? `<div class="card-meta">Poll interval: ${fmtDuration(cfg.poll_interval_ms)}</div>`
+          : '';
+        const gmailTimeSinceLine = item.key === 'gmail' && h.last_success_at
+          ? `<div class="card-meta">Time since last success: ${fmtDuration(Date.now() - h.last_success_at)}</div>`
+          : '';
 
         return `
           <div class="card">
@@ -2029,6 +2044,8 @@
               ${statusBadge(ok)}
             </div>
             <div class="card-meta">Last success: ${fmtTime(h.last_success_at)}</div>
+            ${gmailPollIntervalLine}
+            ${gmailTimeSinceLine}
             ${latencyLine}
             ${modelLine}
             ${errorLine}
